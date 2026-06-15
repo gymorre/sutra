@@ -1,0 +1,615 @@
+// commands/fruitbomb.js
+// Game Tebak Buah / Bom - pilih angka 1-9 di grid 3x3
+// Bot mode & Multiplayer dengan invite system
+
+import { db } from "../utils/database.js";
+import {
+  subtractBalance,
+  recordGameResult,
+  addBalance,
+  getUser
+} from "../utils/economy.js";
+import { gameStateManager } from "../utils/gameState.js";
+import { config } from "../config.js";
+
+export const name = "fb";
+export const aliases = ["fruitbomb", "buah"];
+export const requiresRegistration = true;
+export const isGasGame = false;
+
+// ============================
+// KONSTANTA
+// ============================
+
+const TOTAL_CELLS = 9;
+const BOMB_COUNT = 3;   // 3 bom, 6 buah
+const FRUITS = ["🍎", "🍊", "🍇", "🍓", "🍋", "🍉", "🍑", "🫐", "🥝"];
+
+// Multiplier bertahap per buah yang berhasil ditemukan
+const MULTIPLIERS = [1.0, 1.3, 1.7, 2.2, 3.0, 5.0, 10.0];
+// index 0 = awal, index 1 = setelah 1 buah, dst.
+
+// ============================
+// HELPERS
+// ============================
+
+function generateBoard() {
+  const cells = new Array(TOTAL_CELLS).fill("fruit");
+  // Tempatkan bom secara acak
+  const bombPositions = [];
+  while (bombPositions.length < BOMB_COUNT) {
+    const pos = Math.floor(Math.random() * TOTAL_CELLS);
+    if (!bombPositions.includes(pos)) bombPositions.push(pos);
+  }
+  for (const pos of bombPositions) {
+    cells[pos] = "bomb";
+  }
+  return { cells, bombPositions };
+}
+
+/** Render grid 3x3 dengan emoji */
+function renderBoard(cells, picked = [], showAll = false) {
+  const rows = [];
+  for (let row = 0; row < 3; row++) {
+    const cols = [];
+    for (let col = 0; col < 3; col++) {
+      const idx = row * 3 + col;
+      const num = idx + 1;
+
+      if (picked.includes(idx)) {
+        // Sudah dipilih - tampilkan isinya
+        if (cells[idx] === "bomb") {
+          cols.push("💣");
+        } else {
+          cols.push(FRUITS[idx]);
+        }
+      } else if (showAll) {
+        // Reveal all (akhir game)
+        cols.push(cells[idx] === "bomb" ? "💣" : FRUITS[idx]);
+      } else {
+        // Belum dipilih - tampilkan nomor
+        cols.push(`[${num}]`);
+      }
+    }
+    rows.push(cols.join("  "));
+  }
+  return rows.join("\n");
+}
+
+function getGame(jid) {
+  return db.prepare("SELECT * FROM fruitbomb_games WHERE jid = ?").get(jid);
+}
+
+function saveGame(jid, bet, cells, bombs, fruitsFound, picked, multiplier, mode, opponent, whoseTurn) {
+  db.prepare(`
+    INSERT INTO fruitbomb_games
+      (jid, bet, board, bombs, fruits_found, picked, current_multiplier, mode, opponent, whose_turn, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ongoing', ?)
+    ON CONFLICT(jid) DO UPDATE SET
+      bet = excluded.bet,
+      board = excluded.board,
+      bombs = excluded.bombs,
+      fruits_found = excluded.fruits_found,
+      picked = excluded.picked,
+      current_multiplier = excluded.current_multiplier,
+      mode = excluded.mode,
+      opponent = excluded.opponent,
+      whose_turn = excluded.whose_turn,
+      status = excluded.status,
+      created_at = excluded.created_at
+  `).run(
+    jid, bet,
+    JSON.stringify(cells),
+    JSON.stringify(bombs),
+    fruitsFound,
+    JSON.stringify(picked),
+    multiplier,
+    mode,
+    opponent || null,
+    whoseTurn || null,
+    Date.now()
+  );
+}
+
+function deleteGame(jid) {
+  db.prepare("DELETE FROM fruitbomb_games WHERE jid = ?").run(jid);
+}
+
+// ============================
+// ENTRY POINT (!fb / !fruitbomb)
+// ============================
+
+export async function execute({ sender, args, reply }) {
+  // Cek jika ada game aktif
+  const existing = getGame(sender);
+  if (existing) {
+    const cells = JSON.parse(existing.board);
+    const picked = JSON.parse(existing.picked);
+    const mult = existing.current_multiplier.toFixed(1);
+    return reply(
+      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+      `Kamu masih punya game aktif!\n\n` +
+      renderBoard(cells, picked) + "\n\n" +
+      `💰 Bet: ${config.currencySymbol}${existing.bet}\n` +
+      `🍎 Buah ditemukan: ${existing.fruits_found}\n` +
+      `📈 Multiplier: ${mult}x\n\n` +
+      `Pilih kotak: !g <1-9>\nCairkan: !cash\nKeluar: !back\n\n` +
+      `${config.ui.line}`
+    );
+  }
+
+  const betArg = args?.[0];
+  const bet = betArg && !isNaN(parseInt(betArg)) ? parseInt(betArg, 10) : null;
+
+  if (bet && bet > 0) {
+    gameStateManager.setModeSelection(sender, "fb");
+    gameStateManager.updateGameData(sender, { bet });
+    return reply(
+      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+      `💰 Bet: ${config.currencySymbol}${bet}\n\nPilih mode:\n!1 = 🤖 Lawan BOT\n!2 = 👤 Lawan PLAYER\n\nKeluar: !back\n\n${config.ui.line}`
+    );
+  }
+
+  gameStateManager.setModeSelection(sender, "fb");
+  // Tampilkan info game
+  return reply(
+    `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+    `Grid 3x3 berisi 6 🍎 buah dan 3 💣 bom tersembunyi.\n\n` +
+    `• Pilih kotak 1-9\n• Kena 🍎 = multiplier naik!\n• Kena 💣 = KALAH!\n• Cairkan kapan saja dengan !cash\n\n` +
+    `📈 Multiplier:\n` +
+    `1 buah = 1.3x\n2 buah = 1.7x\n3 buah = 2.2x\n4 buah = 3.0x\n5 buah = 5.0x\n6 buah = 10x 🎉\n\n` +
+    `Cara mulai:\n!fb <bet>\n\nContoh:\n!fb 500\n\n` +
+    `${config.ui.line}`
+  );
+}
+
+// ============================
+// PLAY WITH MODE (bot atau multiplayer) dipanggil setelah !1 / !2
+// ============================
+
+export async function playWithMode({ sender, args, reply, mode }) {
+  const playerState = gameStateManager.getPlayerState(sender);
+  let bet = args[0] ? parseInt(args[0], 10) : playerState?.data?.bet;
+
+  if (!bet || isNaN(bet) || bet <= 0) {
+    return reply(
+      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\nSet bet dulu!\n\nGunakan: !bet <jumlah>\n\nContoh: !bet 500\n\n${config.ui.line}`
+    );
+  }
+
+  if (mode === "bot") {
+    gameStateManager.setMode(sender, "bot");
+    return startBotGame({ sender, bet, reply });
+  }
+
+  // Multiplayer mode - minta tag opponent
+  gameStateManager.setMultiplayerMode(sender, "fb", null);
+  gameStateManager.updateGameData(sender, { bet });
+  return reply(
+    `${config.ui.line}\n┃ 🍎 FRUIT BOMB - MULTIPLAYER\n${config.ui.line}\n\n` +
+    `💰 Bet: ${config.currencySymbol}${bet}\n\n` +
+    `Tag lawanmu:\n!tag @lawan\n\n${config.ui.line}`
+  );
+}
+
+// ============================
+// START MULTIPLAYER (setelah !tag @opponent)
+// ============================
+
+export async function startMultiplayer({ sock, msg, sender, reply, jid, opponent, sendTo }) {
+  const playerState = gameStateManager.getPlayerState(sender);
+  const bet = playerState?.data?.bet;
+
+  if (!bet) {
+    return reply(
+      `${config.ui.line}\n❌ Bet tidak ditemukan!\n\nCoba lagi: !fb <bet>\n\n${config.ui.line}`
+    );
+  }
+
+  const senderUser = getUser(sender);
+  const opponentUser = getUser(opponent);
+
+  if (!opponentUser) {
+    return reply(
+      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\nLawan tidak ditemukan atau belum register.\n\n${config.ui.line}`
+    );
+  }
+
+  if (opponent === sender) {
+    return reply(
+      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\nKamu tidak bisa melawan diri sendiri!\n\n${config.ui.line}`
+    );
+  }
+
+  if (gameStateManager.isPlayerInGame(opponent)) {
+    return reply(
+      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n@${opponent.split("@")[0]} sedang dalam game lain!\n\n${config.ui.line}`,
+      [opponent]
+    );
+  }
+
+  // Buat invite
+  const inviteId = gameStateManager.createInvite(sender, opponent, "fb", bet, jid);
+
+  const opponentNum = opponent.split("@")[0];
+  const senderNum = sender.split("@")[0];
+
+  // Kirim invite ke opponent
+  await sendTo(
+    jid,
+    `@${opponentNum}\n${config.ui.line}\n┃ 🍎 UNDANGAN FRUIT BOMB\n${config.ui.line}\n\n` +
+    `@${senderNum} mengajakmu bermain Fruit Bomb!\n\n` +
+    `💰 Bet: ${config.currencySymbol}${bet} masing-masing\n\n` +
+    `Ketik untuk menjawab:\n✅ !accept\n❌ !decline\n\n` +
+    `⏰ Berlaku 2 menit\n\n${config.ui.line}`,
+    [opponent, sender]
+  );
+
+  return reply(
+    `${config.ui.line}\n┃ 🍎 FRUIT BOMB - MULTIPLAYER\n${config.ui.line}\n\n` +
+    `📨 Undangan dikirim ke @${opponentNum}!\n\nMenunggu jawaban...\n\n${config.ui.line}`,
+    [opponent]
+  );
+}
+
+// ============================
+// ACCEPT INVITE (dipanggil dari command handler)
+// ============================
+
+export async function handleInviteAccepted({ sock, msg, sender, reply, jid, sendTo, invite }) {
+  const { from, bet } = invite;
+  const fromUser = getUser(from);
+  const toUser = getUser(sender);
+  const fromNum = from.split("@")[0];
+  const toNum = sender.split("@")[0];
+
+  // Cek saldo keduanya
+  const deduct1 = await subtractBalance(from, bet, "BET_FB_MP");
+  if (!deduct1.success) {
+    gameStateManager.clearPlayerState(from);
+    return reply(
+      `${config.ui.line}\n❌ Saldo @${fromNum} tidak cukup!\n\nGame dibatalkan.\n\n${config.ui.line}`,
+      [from]
+    );
+  }
+
+  const deduct2 = await subtractBalance(sender, bet, "BET_FB_MP");
+  if (!deduct2.success) {
+    await addBalance(from, bet, "REFUND_FB_MP");
+    gameStateManager.clearPlayerState(from);
+    return reply(
+      `${config.ui.line}\n❌ Saldo kamu tidak cukup!\n💰 Balance: ${config.currencySymbol}${deduct2.balance}\n\n${config.ui.line}`
+    );
+  }
+
+  // Generate board SAMA untuk keduanya (shared board, turn-based)
+  const { cells, bombPositions } = generateBoard();
+  const picked = [];
+
+  // Simpan game untuk player 1 (from) sebagai "pemilik" board
+  saveGame(from, bet, cells, bombPositions, 0, picked, 1.0, "multiplayer", sender, from);
+
+  // Set state kedua player ke IN_GAME
+  gameStateManager.setMode(from, "multiplayer");
+  gameStateManager.setOpponent(from, sender);
+  gameStateManager.updateGameData(from, { bet, gameOwner: from, fruitBombSharedJid: from });
+
+  gameStateManager.setModeSelection(sender, "fb");
+  gameStateManager.setMode(sender, "multiplayer");
+  gameStateManager.setOpponent(sender, from);
+  gameStateManager.updateGameData(sender, { bet, gameOwner: from, fruitBombSharedJid: from });
+
+  const board = renderBoard(cells, []);
+
+  await sendTo(
+    jid,
+    `@${fromNum} @${toNum}\n${config.ui.line}\n┃ 🍎 FRUIT BOMB - MULTIPLAYER DIMULAI!\n${config.ui.line}\n\n` +
+    `👤 Player 1: @${fromNum}\n👤 Player 2: @${toNum}\n\n` +
+    `💰 Bet: ${config.currencySymbol}${bet} masing-masing\n\n` +
+    board + "\n\n" +
+    `🎯 Giliran: @${fromNum}\n\nPilih kotak: !g <1-9>\n\n` +
+    `${config.ui.line}`,
+    [from, sender]
+  );
+}
+
+// ============================
+// HANDLE GAME COMMAND (!g, !bet, !cash) dari command handler
+// ============================
+
+export async function handleGameCommand({ sock, msg, sender, args, reply, jid, command, sendTo }) {
+  if (command === "bet") {
+    const bet = args[0] ? parseInt(args[0], 10) : null;
+    if (!bet || bet <= 0) {
+      return reply(
+        `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\nFormat salah!\n\nGunakan: !bet <jumlah>\n\n${config.ui.line}`
+      );
+    }
+    gameStateManager.updateGameData(sender, { bet });
+    return reply(
+      `${config.ui.line}\n✅ Bet: ${config.currencySymbol}${bet} tersimpan!\n\nPilih mode:\n!1 = Bot\n!2 = Multiplayer\n\nAtau langsung main: !g <1-9>\n\n${config.ui.line}`
+    );
+  }
+
+  if (command === "cash") {
+    return handleCashOut({ sender, reply });
+  }
+
+  if (command === "g" || command === "gas") {
+    const playerState = gameStateManager.getPlayerState(sender);
+    const boardOwnerJid = playerState?.data?.fruitBombSharedJid || sender;
+    const existing = getGame(boardOwnerJid);
+
+    // Jika belum ada game, mulai game baru
+    if (!existing) {
+      let bet = args[0] ? parseInt(args[0], 10) : playerState?.data?.bet;
+
+      if (!bet || isNaN(bet) || bet <= 0) {
+        return reply(
+          `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\nSet bet dulu!\n\nGunakan: !bet <jumlah>\natau: !g <bet>\n\nContoh: !g 500\n\n${config.ui.line}`
+        );
+      }
+
+      const mode = gameStateManager.getMode(sender) || "bot";
+      if (mode === "multiplayer") {
+        const opponent = gameStateManager.getOpponent(sender);
+        if (!opponent) {
+          return reply(
+            `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\nTag lawan dulu:\n!tag @lawan\n\n${config.ui.line}`
+          );
+        }
+      }
+
+      return startBotGame({ sender, bet, reply });
+    }
+
+    // Sudah ada game, proses move
+    const moveArg = args[0];
+    const pos = moveArg ? parseInt(moveArg, 10) : null;
+
+    if (!pos || pos < 1 || pos > 9) {
+      const cells = JSON.parse(existing.board);
+      const picked = JSON.parse(existing.picked);
+      return reply(
+        `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+        renderBoard(cells, picked) + "\n\n" +
+        `🍎 Buah: ${existing.fruits_found} | 📈 ${existing.current_multiplier.toFixed(1)}x\n\n` +
+        `Pilih: !g <1-9>\nCairkan: !cash\n\n${config.ui.line}`
+      );
+    }
+
+    return handleMove({ sender, pos, reply, jid, sendTo, sock, msg });
+  }
+}
+
+// ============================
+// START BOT GAME
+// ============================
+
+async function startBotGame({ sender, bet, reply }) {
+  const deduction = await subtractBalance(sender, bet, "BET_FB");
+  if (!deduction.success) {
+    gameStateManager.clearPlayerState(sender);
+    return reply(
+      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n❌ Saldo tidak cukup!\n💰 Balance: ${config.currencySymbol}${deduction.balance}\n\n${config.ui.line}`
+    );
+  }
+
+  const { cells, bombPositions } = generateBoard();
+  saveGame(sender, bet, cells, bombPositions, 0, [], 1.0, "bot", null, sender);
+  gameStateManager.setPlayerInGame(sender, "fb");
+
+  return reply(
+    `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+    `💰 Bet: ${config.currencySymbol}${bet}\n\n` +
+    renderBoard(cells, []) + "\n\n" +
+    `🎯 Pilih kotak 1-9!\nMisal: !g 5\n\nCairkan: !cash\nKeluar: !back\n\n${config.ui.line}`
+  );
+}
+
+// ============================
+// HANDLE MOVE
+// ============================
+
+async function handleMove({ sender, pos, reply, jid, sendTo, sock, msg }) {
+  const pState = gameStateManager.getPlayerState(sender);
+  const boardOwnerJid = pState?.data?.fruitBombSharedJid || sender;
+  const game = getGame(boardOwnerJid);
+
+  if (!game) {
+    return reply(
+      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\nTidak ada game aktif.\n\nMulai: !fb <bet>\n\n${config.ui.line}`
+    );
+  }
+
+  // Cek giliran untuk multiplayer
+  if (game.mode === "multiplayer" && game.whose_turn !== sender) {
+    const otherNum = game.whose_turn?.split("@")[0];
+    return reply(
+      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\nBukan giliranmu!\n\nGiliran: @${otherNum}\n\n${config.ui.line}`,
+      [game.whose_turn]
+    );
+  }
+
+  const cells = JSON.parse(game.board);
+  const picked = JSON.parse(game.picked);
+  const idx = pos - 1;
+
+  // Cek sudah dipilih
+  if (picked.includes(idx)) {
+    return reply(
+      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\nKotak ${pos} sudah dipilih!\n\n` +
+      renderBoard(cells, picked) + "\n\n" +
+      `Pilih kotak lain: !g <1-9>\n\n${config.ui.line}`
+    );
+  }
+
+  const newPicked = [...picked, idx];
+  const isBomb = cells[idx] === "bomb";
+
+  if (isBomb) {
+    // KALAH - reveal semua
+    deleteGame(boardOwnerJid);
+    gameStateManager.clearPlayerState(boardOwnerJid);
+
+    if (game.mode === "multiplayer") {
+      const opponent = game.opponent;
+      gameStateManager.clearPlayerState(opponent);
+      
+      const winnerJid = sender === boardOwnerJid ? opponent : boardOwnerJid;
+      const loserJid = sender;
+
+      await recordGameResult(loserJid, false, 0, "GAME_FB_MP_LOSE");
+      await recordGameResult(winnerJid, true, game.bet * 2, "GAME_FB_MP_WIN");
+      await addBalance(winnerJid, game.bet * 2, "WIN_FB_MP");
+
+      const loserNum = loserJid.split("@")[0];
+      const winNum = winnerJid.split("@")[0];
+      return reply(
+        `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+        renderBoard(cells, newPicked, true) + "\n\n" +
+        `💣 @${loserNum} kena BOM!\n\n` +
+        `🏆 @${winNum} MENANG!\n💰 +${config.currencySymbol}${game.bet * 2}\n\n${config.ui.line}`,
+        [loserJid, winnerJid]
+      );
+    }
+
+    await recordGameResult(sender, false, 0, "GAME_FB");
+    return reply(
+      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+      renderBoard(cells, newPicked, true) + "\n\n" +
+      `💣 BOM! Kamu KALAH!\n💸 -${config.currencySymbol}${game.bet}\n\n` +
+      `Mau coba lagi?\n!fb <bet>\n\nKeluar: !back\n\n${config.ui.line}`
+    );
+  }
+
+  // BUAH - update state
+  const newFruits = game.fruits_found + 1;
+  const newMult = MULTIPLIERS[Math.min(newFruits, MULTIPLIERS.length - 1)];
+  const potentialWin = Math.floor(game.bet * newMult);
+
+  // Semua buah ditemukan = jackpot
+  if (newFruits >= TOTAL_CELLS - BOMB_COUNT) {
+    deleteGame(boardOwnerJid);
+    gameStateManager.clearPlayerState(boardOwnerJid);
+
+    if (game.mode === "multiplayer") {
+      const opponent = game.opponent;
+      gameStateManager.clearPlayerState(opponent);
+      
+      const winnerJid = sender;
+      const loserJid = sender === boardOwnerJid ? opponent : boardOwnerJid;
+      
+      await recordGameResult(winnerJid, true, potentialWin, "GAME_FB_MP_JACKPOT");
+      await addBalance(winnerJid, potentialWin, "WIN_FB_MP_JACKPOT");
+      await recordGameResult(loserJid, false, 0, "GAME_FB_MP_LOSE");
+
+      const winnerNum = winnerJid.split("@")[0];
+      return reply(
+        `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+        renderBoard(cells, newPicked, true) + "\n\n" +
+        `🎉 JACKPOT! @${winnerNum} menemukan SEMUA buah!\n` +
+        `💰 +${config.currencySymbol}${potentialWin} (${newMult}x)\n\n${config.ui.line}`,
+        [winnerJid, loserJid]
+      );
+    }
+
+    await recordGameResult(sender, true, potentialWin, "GAME_FB_JACKPOT");
+    await addBalance(sender, potentialWin, "WIN_FB_JACKPOT");
+    return reply(
+      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+      renderBoard(cells, newPicked, true) + "\n\n" +
+      `🎉 JACKPOT! Semua buah ditemukan!\n` +
+      `💰 +${config.currencySymbol}${potentialWin} (10x)\n\nKeluar: !back\n\n${config.ui.line}`
+    );
+  }
+
+  // Lanjut game
+  let nextTurn = sender;
+  if (game.mode === "multiplayer") {
+    // Toggle giliran: jika sekarang giliran sender → next = pemain satunya
+    nextTurn = sender === boardOwnerJid ? game.opponent : boardOwnerJid;
+  }
+
+  // Untuk multiplayer, game selalu disimpan dengan jid = boardOwnerJid
+  saveGame(
+    boardOwnerJid,
+    game.bet, cells,
+    JSON.parse(game.bombs),
+    newFruits, newPicked, newMult,
+    game.mode, game.opponent, nextTurn
+  );
+
+  const nextTurnNum = nextTurn?.split("@")[0];
+  const mentionsList = game.mode === "multiplayer" ? [boardOwnerJid, game.opponent] : [sender];
+
+  return reply(
+    `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+    renderBoard(cells, newPicked) + "\n\n" +
+    `🍎 Buah ditemukan: ${newFruits}\n` +
+    `📈 Multiplier: ${newMult}x\n` +
+    `💰 Potensi menang: ${config.currencySymbol}${potentialWin}\n\n` +
+    (game.mode === "multiplayer"
+      ? `🎯 Giliran: @${nextTurnNum}\n\nPilih kotak: !g <1-9>\nKeluar: !back\n\n`
+      : `Pilih lagi: !g <1-9>\nAtau cairkan: !cash\nKeluar: !back\n\n`) +
+    `${config.ui.line}`,
+    mentionsList
+  );
+}
+
+// ============================
+// CASH OUT
+// ============================
+
+async function handleCashOut({ sender, reply }) {
+  const game = getGame(sender);
+
+  if (!game) {
+    return reply(
+      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\nTidak ada game aktif untuk dicairkan.\n\n${config.ui.line}`
+    );
+  }
+
+  if (game.mode === "multiplayer") {
+    return reply(
+      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\nCash out tidak bisa di mode multiplayer!\n\n${config.ui.line}`
+    );
+  }
+
+  if (game.fruits_found === 0) {
+    return reply(
+      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\nTemukan minimal 1 buah dulu sebelum cash out!\n\n${config.ui.line}`
+    );
+  }
+
+  const mult = game.current_multiplier;
+  const payout = Math.floor(game.bet * mult);
+
+  deleteGame(sender);
+  gameStateManager.clearPlayerState(sender);
+
+  const newBalance = await recordGameResult(sender, true, payout, "GAME_FB_CASHOUT");
+  await addBalance(sender, payout, "WIN_FB_CASHOUT");
+
+  return reply(
+    `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+    `💵 CASH OUT!\n\n` +
+    `🍎 Buah: ${game.fruits_found}\n` +
+    `📈 Multiplier: ${mult}x\n` +
+    `💰 Kamu dapat: ${config.currencySymbol}${payout}\n\n` +
+    `💵 Balance sekarang: ${config.currencySymbol}${newBalance}\n\n` +
+    `Main lagi: !fb <bet>\nKeluar: !back\n\n${config.ui.line}`
+  );
+}
+
+export default {
+  name,
+  aliases,
+  requiresRegistration,
+  isGasGame,
+  execute,
+  playWithMode,
+  startMultiplayer,
+  handleGameCommand,
+  handleInviteAccepted
+};

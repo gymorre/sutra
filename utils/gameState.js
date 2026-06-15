@@ -3,42 +3,33 @@
 
 /**
  * Game States:
- * - NONE: Pemain tidak dalam game
- * - GAME_MENU: Memilih game mana yang ingin dimainkan
- * - MODE_SELECT: Memilih vs BOT (!1) atau vs PLAYER (!2)
- * - OPPONENT_SELECT: Menunggu tag atau nickname opponent (untuk multiplayer)
- * - IN_GAME: Sedang bermain
+ * - MODE_SELECT    : Memilih vs BOT (!1) atau vs PLAYER (!2)
+ * - OPPONENT_SELECT: Menunggu tag atau nickname opponent (multiplayer)
+ * - WAITING_INVITE : Menunggu opponent menerima / menolak undangan
+ * - IN_GAME        : Sedang bermain aktif
  */
 
 class GameStateManager {
   constructor() {
-    // playerStates[jid] = { state, game, mode, opponent, data }
+    // playerStates[jid] = { state, game, mode, opponent, data, createdAt }
     this.playerStates = new Map();
-    // activeGames[gameId] = { players: [], gameData }
-    this.activeGames = new Map();
+
+    // pendingInvites[inviteId] = { from, to, game, bet, jid, expiresAt }
+    this.pendingInvites = new Map();
+
+    // Auto-cleanup invites yang expired setiap 2 menit
+    setInterval(() => this.cleanupInvites(), 2 * 60 * 1000);
   }
 
-  /**
-   * Set player state ketika memilih game
-   */
-  setPlayerInGame(jid, game) {
-    this.playerStates.set(jid, {
-      state: "IN_GAME",
-      game: game,
-      mode: null,
-      opponent: null,
-      data: {},
-      createdAt: Date.now()
-    });
-  }
+  // ============================
+  // PLAYER STATE METHODS
+  // ============================
 
-  /**
-   * Set player state untuk mode selection
-   */
+  /** Set state ke MODE_SELECT saat player memilih game */
   setModeSelection(jid, game) {
     this.playerStates.set(jid, {
       state: "MODE_SELECT",
-      game: game,
+      game,
       mode: null,
       opponent: null,
       data: {},
@@ -46,23 +37,42 @@ class GameStateManager {
     });
   }
 
-  /**
-   * Set multiplayer mode dan tunggu opponent
-   */
-  setMultiplayerMode(jid, game, opponent) {
+  /** Set state ke IN_GAME langsung (bot mode atau setelah invite diterima) */
+  setPlayerInGame(jid, game) {
+    const existing = this.playerStates.get(jid);
     this.playerStates.set(jid, {
-      state: "OPPONENT_SELECT",
-      game: game,
-      mode: "multiplayer",
-      opponent: opponent || null,
-      data: {},
-      createdAt: Date.now()
+      state: "IN_GAME",
+      game,
+      mode: existing?.mode || null,
+      opponent: existing?.opponent || null,
+      data: existing?.data || {},
+      createdAt: existing?.createdAt || Date.now()
     });
   }
 
-  /**
-   * Update game data untuk player
-   */
+  /** Set state ke OPPONENT_SELECT (menunggu tag lawan) */
+  setMultiplayerMode(jid, game, opponent) {
+    const existing = this.playerStates.get(jid);
+    this.playerStates.set(jid, {
+      state: "OPPONENT_SELECT",
+      game,
+      mode: "multiplayer",
+      opponent: opponent || null,
+      data: existing?.data || {},
+      createdAt: existing?.createdAt || Date.now()
+    });
+  }
+
+  /** Set state ke WAITING_INVITE (menunggu lawan accept) */
+  setWaitingInvite(jid, inviteId) {
+    const state = this.playerStates.get(jid);
+    if (state) {
+      state.state = "WAITING_INVITE";
+      state.data = { ...state.data, inviteId };
+    }
+  }
+
+  /** Update data tambahan dalam state player */
   updateGameData(jid, data) {
     const state = this.playerStates.get(jid);
     if (state) {
@@ -70,54 +80,42 @@ class GameStateManager {
     }
   }
 
-  /**
-   * Get player state
-   */
+  /** Ambil state player */
   getPlayerState(jid) {
     return this.playerStates.get(jid) || null;
   }
 
-  /**
-   * Check jika player sedang dalam game
-   */
+  /** Cek apakah player sedang dalam game (any active state) */
   isPlayerInGame(jid) {
     const state = this.playerStates.get(jid);
-    return state && (state.state === "IN_GAME" || state.state === "MODE_SELECT" || state.state === "OPPONENT_SELECT");
+    return !!(state && ["IN_GAME", "MODE_SELECT", "OPPONENT_SELECT", "WAITING_INVITE"].includes(state.state));
   }
 
-  /**
-   * Check jika player menunggu pilihan mode
-   */
   isWaitingModeSelection(jid) {
     const state = this.playerStates.get(jid);
-    return state && state.state === "MODE_SELECT";
+    return !!(state && state.state === "MODE_SELECT");
   }
 
-  /**
-   * Check jika player menunggu opponent
-   */
   isWaitingOpponent(jid) {
     const state = this.playerStates.get(jid);
-    return state && state.state === "OPPONENT_SELECT";
+    return !!(state && state.state === "OPPONENT_SELECT");
   }
 
-  /**
-   * Remove player dari game state
-   */
-  removePlayer(jid) {
-    this.playerStates.delete(jid);
+  isWaitingInvite(jid) {
+    const state = this.playerStates.get(jid);
+    return !!(state && state.state === "WAITING_INVITE");
   }
 
-  /**
-   * Clear all states untuk player (untuk !back atau !menu)
-   */
+  /** Hapus state player (keluar game) */
   clearPlayerState(jid) {
     this.playerStates.delete(jid);
   }
 
-  /**
-   * Set mode untuk multiplayer games
-   */
+  removePlayer(jid) {
+    this.playerStates.delete(jid);
+  }
+
+  /** Set mode setelah player pilih !1 atau !2 */
   setMode(jid, mode) {
     const state = this.playerStates.get(jid);
     if (state) {
@@ -126,9 +124,7 @@ class GameStateManager {
     }
   }
 
-  /**
-   * Set opponent untuk multiplayer games
-   */
+  /** Set opponent setelah player tag lawan */
   setOpponent(jid, opponent) {
     const state = this.playerStates.get(jid);
     if (state) {
@@ -137,28 +133,86 @@ class GameStateManager {
     }
   }
 
-  /**
-   * Get current game untuk player
-   */
   getCurrentGame(jid) {
     const state = this.playerStates.get(jid);
     return state ? state.game : null;
   }
 
-  /**
-   * Get mode untuk player (bot atau multiplayer)
-   */
   getMode(jid) {
     const state = this.playerStates.get(jid);
     return state ? state.mode : null;
   }
 
-  /**
-   * Get opponent untuk multiplayer
-   */
   getOpponent(jid) {
     const state = this.playerStates.get(jid);
     return state ? state.opponent : null;
+  }
+
+  // ============================
+  // INVITE SYSTEM
+  // ============================
+
+  /**
+   * Buat invite baru dari sender ke target
+   * @returns {string} inviteId
+   */
+  createInvite(from, to, game, bet, jid) {
+    // Hapus invite lama dari player ini jika ada
+    for (const [id, inv] of this.pendingInvites) {
+      if (inv.from === from) this.pendingInvites.delete(id);
+    }
+
+    const inviteId = `${from}_${game}_${Date.now()}`;
+    this.pendingInvites.set(inviteId, {
+      from,
+      to,
+      game,
+      bet,
+      jid,        // groupJid atau privateJid tempat game berlangsung
+      expiresAt: Date.now() + 2 * 60 * 1000 // 2 menit
+    });
+
+    // Set sender ke WAITING_INVITE
+    this.setWaitingInvite(from, inviteId);
+
+    return inviteId;
+  }
+
+  /**
+   * Cari invite yang ditujukan ke jid tertentu
+   */
+  getInviteForPlayer(to) {
+    for (const [id, invite] of this.pendingInvites) {
+      if (invite.to === to && invite.expiresAt > Date.now()) {
+        return { id, ...invite };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Ambil dan hapus invite (accept/decline)
+   */
+  consumeInvite(inviteId) {
+    const invite = this.pendingInvites.get(inviteId);
+    if (!invite) return null;
+    this.pendingInvites.delete(inviteId);
+    return invite;
+  }
+
+  /** Hapus invite yang sudah expired */
+  cleanupInvites() {
+    const now = Date.now();
+    for (const [id, invite] of this.pendingInvites) {
+      if (invite.expiresAt <= now) {
+        this.pendingInvites.delete(id);
+        // Bebaskan player pengirim jika masih WAITING_INVITE
+        const senderState = this.playerStates.get(invite.from);
+        if (senderState && senderState.state === "WAITING_INVITE") {
+          this.playerStates.delete(invite.from);
+        }
+      }
+    }
   }
 }
 

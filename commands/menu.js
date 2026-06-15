@@ -28,39 +28,51 @@ ${config.ui.doubleLine}
 
 ${config.ui.line}
 
-🎮 !game
-└─ Menampilkan semua command game
+🎮 GAME TERSEDIA:
 
-💰 !deposit
-└─ Coming Soon
-
-💸 !withdraw
-└─ Coming Soon
-
-💱 !kurs
-└─ Menampilkan semua kurs mata uang
-
-📊 !idx
-└─ Coming Soon
-
-🎯 !dv
-└─ Coming Soon
-
-✨ More Feature
-└─ Coming Soon
-
-📞 !support
-└─ Arahkan ke nomor pribadi support
-
-👥 !invitebot
-└─ Invite bot ke grup
+🎲 !reme / !re        → Angka acak (50/50)
+🃏 !bj / !blackjack   → Blackjack vs Bot
+🪙 !fp / !flipcoin    → Tebak HEAD/TAIL
+❌⭕ !ttt / !tictactoe → Tic Tac Toe 3x3
+🍎 !fb / !fruitbomb   → Tebak Buah atau Bom!
 
 ${config.ui.line}
 
-ℹ️ CATATAN PENTING:
-Bot ini masih dalam tahap pengembangan (OPEN BETA). Fitur dan perintah dapat berubah sewaktu-waktu. Harap bersabar dan laporkan bug ke support. Terima kasih atas dukunganmu!
+📋 CARA MAIN:
+1. Pilih game: !reme / !bj / dll
+2. Pilih mode: !1 BOT  !2 PLAYER
+3. Set bet: !bet <jumlah>
+4. Main: !g <aksi>
 
-${config.ui.doubleLine}
+🚪 Keluar game: !back atau !menu
+
+${config.ui.line}
+
+💰 EKONOMI:
+
+💵 !balance / !bal → Lihat saldo
+📋 !cek            → Info akun
+🏆 !leaderboard    → Ranking
+💱 !kurs           → Kurs mata uang
+
+${config.ui.line}
+
+🎁 REWARD HARIAN:
+
+⏰ !hourly  → Per jam
+📅 !daily   → Per hari
+📆 !weekly  → Per minggu
+🗓️ !monthly → Per bulan
+
+${config.ui.line}
+
+📞 !support   → Hubungi support
+👥 !invitebot → Invite bot ke grup
+
+${config.ui.line}
+
+ℹ️ OPEN BETA - Fitur terus diperbarui!
+
 ${config.ui.doubleLine}
 
 🕐 Jam: ${jam}

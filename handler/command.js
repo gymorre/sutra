@@ -1,5 +1,6 @@
 // handler/command.js
 // Mendaftarkan dan menjalankan semua command
+// Flow baru: Game dipilih via !reme/!bj/!fp/!ttt/!fb → locked → !g/!bet/!gas untuk main
 
 import { config } from "../config.js";
 import { isRegistered } from "../utils/economy.js";
@@ -13,6 +14,7 @@ import reme from "../commands/reme.js";
 import blackjack from "../commands/blackjack.js";
 import flipcoin from "../commands/flipcoin.js";
 import tictactoe from "../commands/tictactoe.js";
+import fruitbomb from "../commands/fruitbomb.js";
 import balance from "../commands/balance.js";
 import cek from "../commands/cek.js";
 import leaderboard from "../commands/leaderboard.js";
@@ -30,196 +32,319 @@ import invitebot from "../commands/invitebot.js";
 // ============================
 
 export const commands = new Map();
-export const gasGames = new Map(); // game-game yang bisa dipanggil via !gas <game> <bet>
+
+/** Map game name → command module */
+const gameCommands = new Map();
 
 function registerCommand(cmd) {
   commands.set(cmd.name, cmd);
-
   if (cmd.aliases && cmd.aliases.length > 0) {
     for (const alias of cmd.aliases) {
       commands.set(alias, cmd);
     }
   }
+}
 
-  if (cmd.isGasGame) {
-    gasGames.set(cmd.name, cmd);
-    if (cmd.aliases) {
-      for (const alias of cmd.aliases) {
-        gasGames.set(alias, cmd);
-      }
+function registerGame(cmd) {
+  registerCommand(cmd);
+  gameCommands.set(cmd.name, cmd);
+  if (cmd.aliases) {
+    for (const alias of cmd.aliases) {
+      gameCommands.set(alias, cmd);
     }
   }
 }
 
-// Daftarkan semua command tunggal
+// Daftarkan semua non-game command
 [
-  menu,
-  game,
-  register,
-  reme,
-  blackjack,
-  flipcoin,
-  tictactoe,
-  balance,
-  cek,
-  leaderboard,
-  kurs,
-  deposit,
-  withdraw,
-  idx,
-  dv,
-  support,
-  invitebot
+  menu, game, register,
+  balance, cek, leaderboard,
+  kurs, deposit, withdraw, idx, dv,
+  support, invitebot
 ].forEach(registerCommand);
 
-// Daftarkan reward commands (hourly, daily, weekly, monthly) - array
+// Daftarkan game commands
+[reme, blackjack, flipcoin, tictactoe, fruitbomb].forEach(registerGame);
+
+// Daftarkan reward commands (array)
 rewards.forEach(registerCommand);
 
+// ============================
+// COMMAND SETS SAAT DALAM GAME
+// ============================
 
-async function handleGas(ctx) {
-  const { args, reply } = ctx;
-  const gameName = (args[0] || "").toLowerCase();
-  const gasCommand = gasGames.get(gameName);
+/** Command yang selalu diizinkan (keluar game) */
+const ALWAYS_ALLOWED = new Set(["back", "home", "menu"]);
 
-  if (!gasCommand) {
+/** Command yang diizinkan saat IN_GAME */
+const IN_GAME_ALLOWED = new Set(["back", "home", "menu", "gas", "bet", "g", "cash"]);
+
+/** Command yang diizinkan saat MODE_SELECT */
+const MODE_SELECT_ALLOWED = new Set(["back", "home", "menu", "1", "2", "bet"]);
+
+/** Command yang diizinkan saat OPPONENT_SELECT */
+const OPPONENT_SELECT_ALLOWED = new Set(["back", "home", "menu", "tag"]);
+
+/** Command yang diizinkan saat WAITING_INVITE */
+const WAITING_INVITE_ALLOWED = new Set(["back", "home", "menu"]);
+
+// ============================
+// HELPER: PESAN LOCKED
+// ============================
+
+function getLockedMessage(state, game) {
+  const gameName = game ? game.toUpperCase() : "GAME";
+
+  const stateHints = {
+    MODE_SELECT: `Pilih mode:\n!1 = 🤖 BOT\n!2 = 👤 PLAYER\n\nKeluar: !back`,
+    OPPONENT_SELECT: `Tag lawanmu:\n!tag @lawan\n\nKeluar: !back`,
+    WAITING_INVITE: `Menunggu lawan menjawab...\n\nBatalkan: !back`,
+    IN_GAME:
+      `Sedang bermain ${gameName}!\n\nCommand tersedia:\n` +
+      `!g <aksi/angka> → main\n!bet <jumlah> → set bet\n!cash → cairkan (fruitbomb)\n\nKeluar: !back`
+  };
+
+  return (
+    `${config.ui.line}\n┃ 🔒 SEDANG DALAM GAME\n${config.ui.line}\n\n` +
+    `${stateHints[state] || "Kamu sedang dalam game."}\n\n` +
+    `${config.ui.line}`
+  );
+}
+
+// ============================
+// MAIN EXECUTE
+// ============================
+
+/**
+ * @param {object} ctx - context berisi sock, msg, sender, command, args, reply, sendTo, jid, isGroup, groupJid
+ */
+export async function executeCommand(ctx) {
+  const { command, sender, args, reply, jid, sendTo } = ctx;
+  const playerState = gameStateManager.getPlayerState(sender);
+
+  // ============================
+  // 1. KELUAR GAME (!back / !home / !menu)
+  // ============================
+  if (ALWAYS_ALLOWED.has(command)) {
+    if (gameStateManager.isPlayerInGame(sender)) {
+      gameStateManager.clearPlayerState(sender);
+
+      // Jika !menu, tampilkan menu setelah keluar
+      if (command === "menu") {
+        const menuCmd = commands.get("menu");
+        if (menuCmd) {
+          // Tampilkan pesan keluar dulu
+          await reply(
+            `${config.ui.line}\n✅ Keluar dari game!\n\n${config.ui.line}`
+          );
+          return menuCmd.execute(ctx);
+        }
+      }
+
+      return reply(
+        `${config.ui.line}\n✅ Keluar dari game!\n\nGunakan !game untuk melihat daftar game.\n\n${config.ui.line}`
+      );
+    }
+
+    if (command === "menu") {
+      const menuCmd = commands.get("menu");
+      return menuCmd?.execute(ctx);
+    }
+
+    if (command === "back" || command === "home") {
+      return; // Tidak dalam game, abaikan
+    }
+  }
+
+  // ============================
+  // 2. RESPOND INVITE (!accept / !decline)
+  // ============================
+  if (command === "accept" || command === "decline") {
+    const invite = gameStateManager.getInviteForPlayer(sender);
+
+    if (!invite) {
+      return reply(
+        `${config.ui.line}\n┃ UNDANGAN\n${config.ui.line}\n\nTidak ada undangan game untukmu.\n\n${config.ui.line}`
+      );
+    }
+
+    if (command === "decline") {
+      const consumed = gameStateManager.consumeInvite(invite.id);
+      if (consumed) {
+        // Bebaskan pengirim
+        gameStateManager.clearPlayerState(consumed.from);
+
+        const fromNum = consumed.from.split("@")[0];
+        await sendTo(
+          consumed.jid || jid,
+          `@${fromNum}\n${config.ui.line}\n❌ @${sender.split("@")[0]} menolak undangan game.\n\n${config.ui.line}`,
+          [consumed.from, sender]
+        );
+      }
+      return reply(
+        `${config.ui.line}\n❌ Undangan ditolak.\n\n${config.ui.line}`
+      );
+    }
+
+    // ACCEPT
+    if (gameStateManager.isPlayerInGame(sender)) {
+      return reply(
+        `${config.ui.line}\n❌ Kamu sedang dalam game lain!\n\nKeluar dulu: !back\n\n${config.ui.line}`
+      );
+    }
+
+    const consumed = gameStateManager.consumeInvite(invite.id);
+    if (!consumed) {
+      return reply(
+        `${config.ui.line}\n❌ Undangan sudah kedaluwarsa.\n\n${config.ui.line}`
+      );
+    }
+
+    const gameCmd = gameCommands.get(consumed.game);
+    if (gameCmd && gameCmd.handleInviteAccepted) {
+      return gameCmd.handleInviteAccepted({ ...ctx, invite: consumed });
+    }
+
     return reply(
-      `${config.ui.line}\n┃ GAS\n${config.ui.line}\n\nGame "${gameName}" tidak ditemukan.\n\nGame tersedia:\n${[...new Set([...gasGames.values()].map((g) => g.name))]
-        .map((n) => `!${n}`)
-        .join("\n")}\n\n${config.ui.line}`
+      `${config.ui.line}\n❌ Game tidak ditemukan.\n\n${config.ui.line}`
     );
   }
 
-  // Shift arguments: !gas <game> 100 -> args for the game = ["100", ...]
-  const newArgs = args.slice(1);
-  return gasCommand.execute({ ...ctx, args: newArgs });
-}
-
-
-/**
- * @param {object} ctx - context berisi sock, msg, sender, command, args, reply, jid, isGroup, groupJid
- */
-export async function executeCommand(ctx) {
-  const { command, sender, reply } = ctx;
-  const playerState = gameStateManager.getPlayerState(sender);
-
-  // ===== GAME EXIT COMMANDS =====
-  if (command === "back" || command === "menu") {
-    if (gameStateManager.isPlayerInGame(sender)) {
-      gameStateManager.clearPlayerState(sender);
-      return reply(
-        `${config.ui.line}\n✅ Keluar dari game!\n\nGunakan !menu untuk main lagi.\n\n${config.ui.line}`
-      );
-    }
-    // Jika tidak dalam game, tampilkan menu biasa
-    if (command === "menu") {
-      const menuCmd = commands.get("menu");
-      return menuCmd.execute(ctx);
-    }
-    return; // !back tanpa dalam game, abaikan
-  }
-
+  // ============================
+  // 3. PLAYER SEDANG DALAM STATE GAME - LOCK
+  // ============================
   if (playerState) {
-    const allowedCommands = new Set(["back", "menu"]);
-    if (playerState.state === "MODE_SELECT") {
-      allowedCommands.add("1");
-      allowedCommands.add("2");
-    } else if (playerState.state === "OPPONENT_SELECT") {
-      allowedCommands.add("tag");
-    } else if (playerState.state === "IN_GAME") {
-      allowedCommands.add("gas");
-      allowedCommands.add("bet");
-      allowedCommands.add("g");
+    const { state, game: activeGame } = playerState;
+    let allowed;
+
+    if (state === "MODE_SELECT") {
+      allowed = MODE_SELECT_ALLOWED;
+    } else if (state === "OPPONENT_SELECT") {
+      allowed = OPPONENT_SELECT_ALLOWED;
+    } else if (state === "WAITING_INVITE") {
+      allowed = WAITING_INVITE_ALLOWED;
+    } else if (state === "IN_GAME") {
+      allowed = IN_GAME_ALLOWED;
+      // Izinkan angka 1-9 untuk TicTacToe dan FruitBomb
+      if (activeGame === "tictactoe" || activeGame === "fb") {
+        allowed = new Set([...IN_GAME_ALLOWED, "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+      }
     }
 
-    if (!allowedCommands.has(command)) {
-      const stateText = playerState.state === "MODE_SELECT"
-        ? "Gunakan !1 atau !2 untuk memilih mode, lalu !back atau !menu."
-        : playerState.state === "OPPONENT_SELECT"
-          ? "Gunakan !tag @opponent atau !tag nickname, lalu !back atau !menu."
-          : "Gunakan hanya !gas, !bet, !g, !back, atau !menu saat dalam game.";
-
-      return reply(
-        `${config.ui.line}\n┃ DALAM GAME\n${config.ui.line}\n\nSedang dalam game. ${stateText}\n\n${config.ui.line}`
-      );
+    if (allowed && !allowed.has(command)) {
+      return reply(getLockedMessage(state, activeGame));
     }
   }
 
-  // ===== MODE SELECTION: !1 (bot) atau !2 (player) =====
-  if ((command === "1" || command === "2") && playerState && playerState.state === "MODE_SELECT") {
+  // ============================
+  // 4. MODE SELECTION (!1 atau !2)
+  // ============================
+  if ((command === "1" || command === "2") && playerState?.state === "MODE_SELECT") {
     const mode = command === "1" ? "bot" : "multiplayer";
     gameStateManager.setMode(sender, mode);
 
-    if (mode === "bot") {
-      // Langsung ke game vs bot
-      const gameCmd = commands.get(playerState.game);
-      if (gameCmd && gameCmd.playWithMode) {
-        return gameCmd.playWithMode({ ...ctx, mode: "bot", opponent: "bot", args: [] });
-      }
-    } else {
-      // Tunggu tag opponent
-      return reply(
-        `${config.ui.line}\n┃ MULTIPLAYER MODE\n${config.ui.line}\n\nTag opponent mu:\n!tag @opponent\n\natau gunakan nickname:\n!tag nama_lawan\n\n${config.ui.line}`
-      );
-    }
-  }
-
-  // ===== GAME QUICK COMMANDS =====
-  // !g untuk game play, !bet untuk set bet
-  if ((command === "g" || command === "bet") && playerState && playerState.state === "IN_GAME") {
     const gameCmd = commands.get(playerState.game);
-    if (gameCmd && gameCmd.handleGameCommand) {
-      return gameCmd.handleGameCommand({ ...ctx, args: ctx.args, command: command });
+    if (gameCmd && gameCmd.playWithMode) {
+      return gameCmd.playWithMode({ ...ctx, mode, args: [] });
     }
   }
 
-  // ===== TAG OPPONENT UNTUK MULTIPLAYER =====
-  if (command === "tag" && playerState && playerState.state === "OPPONENT_SELECT") {
-    const args = ctx.args;
+  // ============================
+  // 5. TAG OPPONENT untuk multiplayer
+  // ============================
+  if (command === "tag" && playerState?.state === "OPPONENT_SELECT") {
+    const mentioned = ctx.msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
     let opponent = null;
 
-    // Cek jika ada mention
-    const mentioned = ctx.msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
     if (mentioned && mentioned.length > 0) {
       opponent = mentioned[0];
     } else if (args.length > 0) {
-      // Gunakan nickname
       opponent = args.join(" ");
     }
 
-    if (opponent) {
-      gameStateManager.setOpponent(sender, opponent);
-      const gameCmd = commands.get(playerState.game);
-      if (gameCmd && gameCmd.startMultiplayer) {
-        return gameCmd.startMultiplayer({ ...ctx, opponent: opponent });
+    if (!opponent) {
+      return reply(
+        `${config.ui.line}\n❌ Invalid!\n\nGunakan:\n!tag @lawan\natau\n!tag nickname\n\n${config.ui.line}`
+      );
+    }
+
+    const gameCmd = commands.get(playerState.game);
+    if (gameCmd && gameCmd.startMultiplayer) {
+      return gameCmd.startMultiplayer({ ...ctx, opponent });
+    }
+  }
+
+  // ============================
+  // 6. IN-GAME QUICK COMMANDS (!g, !bet, !gas, !cash)
+  //    Juga digit 1-9 saat TTT atau FruitBomb
+  // ============================
+  if (playerState?.state === "IN_GAME") {
+    const activeGame = playerState.game;
+    const gameCmd = commands.get(activeGame);
+
+    // Angka 1-9 langsung → !g <angka> untuk TTT / FruitBomb
+    if (/^[1-9]$/.test(command) && (activeGame === "tictactoe" || activeGame === "fb")) {
+      if (gameCmd && gameCmd.handleGameCommand) {
+        return gameCmd.handleGameCommand({
+          ...ctx,
+          command: "g",
+          args: [command, ...args]
+        });
       }
-    } else {
-      return reply(
-        `${config.ui.line}\n❌ Invalid opponent!\n\nGunakan:\n!tag @opponent\natau\n!tag nama_lawan\n\n${config.ui.line}`
-      );
+    }
+
+    if (["g", "gas", "bet", "cash"].includes(command)) {
+      if (gameCmd && gameCmd.handleGameCommand) {
+        return gameCmd.handleGameCommand({ ...ctx, command });
+      }
     }
   }
 
-  // ===== GAS COMMAND =====
-  if (command === "gas") {
-    // !gas tetap butuh registrasi (game)
-    if (!isRegistered(sender)) {
-      return reply(
-        `${config.ui.line}\n┃ ${config.botName} BOT\n${config.ui.line}\n\nKamu belum terdaftar!\n\nGunakan:\n!register nickname\n\n${config.ui.line}`
-      );
+  // Juga handle saat MODE_SELECT dan ketik !bet
+  if (command === "bet" && playerState && playerState.state !== undefined) {
+    const gameCmd = commands.get(playerState.game);
+    if (gameCmd && gameCmd.handleGameCommand) {
+      return gameCmd.handleGameCommand({ ...ctx, command });
     }
-    return handleGas(ctx);
   }
 
+  // ============================
+  // 7. GAME ENTRY COMMANDS (!reme, !bj, !fp, !ttt, !fb)
+  // ============================
+  const gameCmd = gameCommands.get(command);
+  if (gameCmd) {
+    // Jika player sudah dalam game lain, tolak
+    if (playerState && playerState.game && playerState.game !== gameCmd.name &&
+        !gameCmd.aliases?.includes(playerState.game)) {
+      return reply(
+        `${config.ui.line}\n🔒 SEDANG DALAM GAME\n${config.ui.line}\n\n` +
+        `Kamu masih dalam game ${playerState.game.toUpperCase()}.\n\n` +
+        `Keluar dulu: !back\n\n${config.ui.line}`
+      );
+    }
+
+    // Cek registrasi
+    if (gameCmd.requiresRegistration !== false && !isRegistered(sender)) {
+      return reply(
+        `${config.ui.line}\n┃ ${config.botName} BOT\n${config.ui.line}\n\n` +
+        `Kamu belum terdaftar!\n\nGunakan:\n!register nickname\n\nContoh:\n!register AditGaming\n\n${config.ui.line}`
+      );
+    }
+
+    return gameCmd.execute(ctx);
+  }
+
+  // ============================
+  // 8. COMMAND BIASA (non-game)
+  // ============================
   const cmd = commands.get(command);
-
-  if (!cmd) {
-    return; // Bukan command yang dikenali, abaikan
-  }
+  if (!cmd) return; // Bukan command yang dikenali
 
   // Cek registrasi
   if (cmd.requiresRegistration !== false && !isRegistered(sender)) {
     return reply(
-      `${config.ui.line}\n┃ ${config.botName} BOT\n${config.ui.line}\n\nKamu belum terdaftar!\n\nGunakan:\n!register nickname\n\nContoh:\n!register AditGaming\n\n${config.ui.line}`
+      `${config.ui.line}\n┃ ${config.botName} BOT\n${config.ui.line}\n\n` +
+      `Kamu belum terdaftar!\n\nGunakan:\n!register nickname\n\nContoh:\n!register AditGaming\n\n${config.ui.line}`
     );
   }
 
@@ -228,9 +353,10 @@ export async function executeCommand(ctx) {
   } catch (err) {
     console.error(`Error executing command "${command}":`, err);
     return reply(
-      `${config.ui.line}\n┃ ERROR\n${config.ui.line}\n\nTerjadi kesalahan saat menjalankan command.\nSilakan coba lagi.\n\n${config.ui.line}`
+      `${config.ui.line}\n┃ ERROR\n${config.ui.line}\n\n` +
+      `Terjadi kesalahan.\nSilakan coba lagi.\n\n${config.ui.line}`
     );
   }
 }
 
-export default { commands, gasGames, executeCommand };
+export default { commands, gameCommands, executeCommand };

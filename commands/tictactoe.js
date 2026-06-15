@@ -1,6 +1,6 @@
 // commands/tictactoe.js
-// Tic Tac Toe multiplayer dalam grup
-// Dimainkan via: !gas ttt <bet> @tag  lalu  !gas ttt <1-9>
+// Tic Tac Toe multiplayer - invite/accept system
+// Flow baru: !ttt → !2 → !tag @lawan → lawan !accept → main dengan !g 1-9
 
 import { db } from "../utils/database.js";
 import {
@@ -14,8 +14,8 @@ import { config } from "../config.js";
 
 export const name = "tictactoe";
 export const aliases = ["ttt"];
-export const requiresRegistration = false;
-export const isGasGame = true;
+export const requiresRegistration = true;
+export const isGasGame = false;
 
 const EMPTY_BOARD = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
@@ -23,243 +23,401 @@ function renderBoard(board) {
   const cell = (v) => {
     if (v === "X") return "❌";
     if (v === "O") return "⭕";
-    return v;
+    return `[${v}]`;
   };
 
   return (
-    `${cell(board[0])} | ${cell(board[1])} | ${cell(board[2])}\n` +
-    `${cell(board[3])} | ${cell(board[4])} | ${cell(board[5])}\n` +
-    `${cell(board[6])} | ${cell(board[7])} | ${cell(board[8])}`
+    `${cell(board[0])} ${cell(board[1])} ${cell(board[2])}\n` +
+    `${cell(board[3])} ${cell(board[4])} ${cell(board[5])}\n` +
+    `${cell(board[6])} ${cell(board[7])} ${cell(board[8])}`
   );
 }
 
 function checkWinner(board) {
   const lines = [
-    [0, 1, 2], [3, 4, 5], [6, 7, 8], // rows
-    [0, 3, 6], [1, 4, 7], [2, 5, 8], // cols
-    [0, 4, 8], [2, 4, 6] // diagonals
+    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+    [0, 4, 8], [2, 4, 6]
   ];
 
   for (const [a, b, c] of lines) {
-    if (
-      board[a] === board[b] &&
-      board[b] === board[c] &&
-      (board[a] === "X" || board[a] === "O")
-    ) {
+    if (board[a] === board[b] && board[b] === board[c] && (board[a] === "X" || board[a] === "O")) {
       return board[a];
     }
   }
 
-  if (!board.some((c) => !["X", "O"].includes(c) && /^[1-9]$/.test(c))) {
+  if (!board.some((c) => !["X", "O"].includes(c))) {
     return "DRAW";
   }
 
   return null;
 }
 
-function getActiveGame(groupId, jid) {
-  return db
-    .prepare(
-      `SELECT * FROM tictactoe_games
-       WHERE group_id = ? AND status = 'ongoing'
-       AND (player_x = ? OR player_o = ?)`
-    )
-    .get(groupId, jid, jid);
+function getActiveGame(jid, playerJid) {
+  return db.prepare(
+    `SELECT * FROM tictactoe_games WHERE group_id = ? AND status = 'ongoing' AND (player_x = ? OR player_o = ?)`
+  ).get(jid, playerJid, playerJid);
 }
 
-// ===== INFO =====
-export async function execute({ reply }) {
+function getActiveGameByPlayer(playerJid) {
+  return db.prepare(
+    `SELECT * FROM tictactoe_games WHERE status = 'ongoing' AND (player_x = ? OR player_o = ?)`
+  ).get(playerJid, playerJid);
+}
+
+// ============================
+// BOT AI (Minimax sederhana)
+// ============================
+
+function getBotMove(board) {
+  // Coba menang
+  for (let i = 0; i < 9; i++) {
+    if (!["X", "O"].includes(board[i])) {
+      const test = [...board];
+      test[i] = "O";
+      if (checkWinner(test) === "O") return i;
+    }
+  }
+  // Blok pemain
+  for (let i = 0; i < 9; i++) {
+    if (!["X", "O"].includes(board[i])) {
+      const test = [...board];
+      test[i] = "X";
+      if (checkWinner(test) === "X") return i;
+    }
+  }
+  // Pilih tengah
+  if (!["X", "O"].includes(board[4])) return 4;
+  // Pilih sudut
+  for (const corner of [0, 2, 6, 8]) {
+    if (!["X", "O"].includes(board[corner])) return corner;
+  }
+  // Pilih acak
+  const available = board.map((v, i) => (!["X", "O"].includes(v) ? i : null)).filter(v => v !== null);
+  return available[Math.floor(Math.random() * available.length)];
+}
+
+// ============================
+// ENTRY (!ttt / !tictactoe)
+// ============================
+
+export async function execute({ sender, args, reply, jid }) {
+  const existing = getActiveGameByPlayer(sender);
+
+  if (existing) {
+    const board = JSON.parse(existing.board);
+    const playerXUser = getUser(existing.player_x);
+    const playerOUser = getUser(existing.player_o);
+    const turnUser = getUser(existing.turn);
+    const turnSymbol = existing.turn === existing.player_x ? "❌" : "⭕";
+
+    return reply(
+      `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n` +
+      `❌ ${playerXUser?.nickname || "Player 1"}\n` +
+      `⭕ ${playerOUser?.nickname || "Player 2"}\n\n` +
+      `${renderBoard(board)}\n\n` +
+      `Giliran: ${turnSymbol} ${turnUser?.nickname || "?"}\n\n` +
+      `Pilih posisi: !g <1-9>\nKeluar: !back\n\n${config.ui.line}`
+    );
+  }
+
+  const betArg = args[0];
+  const bet = betArg ? parseInt(betArg, 10) : null;
+
+  if (bet && bet > 0) {
+    gameStateManager.setModeSelection(sender, "tictactoe");
+    gameStateManager.updateGameData(sender, { bet });
+    return reply(
+      `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n` +
+      `💰 Bet: ${config.currencySymbol}${bet}\n\nPilih mode:\n!1 = 🤖 Lawan BOT\n!2 = 👤 Lawan PLAYER\n\nKeluar: !back\n\n${config.ui.line}`
+    );
+  }
+
+  gameStateManager.setModeSelection(sender, "tictactoe");
   return reply(
-    `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\nGame multiplayer 1v1.\n\nCara bermain:\n!gas ttt <bet> @tag\n\nAtau:\n!gas ttt <bet>\n\nKemudian pilih:\n!1 = Lawan BOT\n!2 = Lawan PLAYER LAIN\n\nSaat main:\n!gas ttt <1-9>\n\nKeluar:\n!back atau !menu\n\nContoh:\n!gas ttt 100 @lawan\n!gas ttt 100\n!1 (lawan bot)\n\n${config.ui.line}`
+    `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n` +
+    `Game 3x3 klasik!\n\n` +
+    `Set bet:\n!bet <jumlah>\n\nLangsung main:\n!ttt <bet>\n\nMode:\n!1 = 🤖 BOT\n!2 = 👤 PLAYER\n\nKeluar: !back\n\n${config.ui.line}`
   );
 }
 
-// ===== PLAY WITH MODE =====
-export async function playWithMode({ sock, msg, sender, args, reply, jid, mode, opponent }) {
-  const betArg = args[0];
-  const bet = betArg ? parseInt(betArg, 10) : 0;
+// ============================
+// PLAY WITH MODE
+// ============================
 
-  if (!bet || bet <= 0) {
+export async function playWithMode({ sender, args, reply, jid, mode }) {
+  const playerState = gameStateManager.getPlayerState(sender);
+  let bet = args[0] ? parseInt(args[0], 10) : playerState?.data?.bet;
+
+  if (!bet || isNaN(bet) || bet <= 0) {
     return reply(
-      `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\nFormat salah!\n\nGunakan:\n!gas ttt <bet>\n\nContoh:\n!gas ttt 100\n\n${config.ui.line}`
+      `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\nSet bet dulu!\n\nGunakan: !bet <jumlah>\n\n${config.ui.line}`
     );
   }
 
   if (mode === "bot") {
-    // Bot mode - belum support untuk tictactoe (too complex)
-    return reply(
-      `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\nBot mode untuk TTT belum tersedia.\n\nGunakan mode multiplayer:\n!2 untuk melawan player lain\n\n${config.ui.line}`
-    );
-  } else if (mode === "multiplayer") {
-    gameStateManager.setMultiplayerMode(sender, "ttt", null);
+    gameStateManager.setMode(sender, "bot");
     gameStateManager.updateGameData(sender, { bet });
-    
-    return reply(
-      `${config.ui.line}\n┃ TIC TAC TOE - MULTIPLAYER\n${config.ui.line}\n\nBet: ${config.currencySymbol}${bet}\n\nTag opponent:\n!tag @opponent\n\natau nickname:\n!tag nama_lawan\n\n${config.ui.line}`
-    );
+    return startBotGame({ sender, bet, reply, jid });
   }
+
+  // Multiplayer
+  gameStateManager.setMultiplayerMode(sender, "tictactoe", null);
+  gameStateManager.updateGameData(sender, { bet });
+
+  return reply(
+    `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE - MULTIPLAYER\n${config.ui.line}\n\n` +
+    `💰 Bet: ${config.currencySymbol}${bet}\n\nTag lawanmu:\n!tag @lawan\n\n${config.ui.line}`
+  );
 }
 
-// ===== START MULTIPLAYER =====
-export async function startMultiplayer({ sock, msg, sender, reply, jid, opponent }) {
+// ============================
+// START BOT GAME
+// ============================
+
+async function startBotGame({ sender, bet, reply, jid }) {
+  const deduction = await subtractBalance(sender, bet, "BET_TTT_BOT");
+  if (!deduction.success) {
+    gameStateManager.clearPlayerState(sender);
+    return reply(
+      `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n❌ Saldo tidak cukup!\n💰 Balance: ${config.currencySymbol}${deduction.balance}\n\n${config.ui.line}`
+    );
+  }
+
+  const board = [...EMPTY_BOARD];
+  const gameId = `bot_${sender}_${Date.now()}`;
+  const groupId = jid || sender;
+
+  db.prepare(
+    `INSERT INTO tictactoe_games (id, group_id, player_x, player_o, board, turn, bet, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'ongoing', ?)`
+  ).run(gameId, groupId, sender, "BOT", JSON.stringify(board), sender, bet, Date.now());
+
+  gameStateManager.setPlayerInGame(sender, "tictactoe");
+  gameStateManager.updateGameData(sender, { bet, gameId, isBot: true, groupId });
+
+  const senderUser = getUser(sender);
+
+  return reply(
+    `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE - vs BOT\n${config.ui.line}\n\n` +
+    `❌ ${senderUser?.nickname || "Kamu"}\n⭕ 🤖 BOT\n\n` +
+    `💰 Bet: ${config.currencySymbol}${bet}\n\n` +
+    `${renderBoard(board)}\n\n` +
+    `Giliranmu! Pilih: !g <1-9>\nKeluar: !back\n\n${config.ui.line}`
+  );
+}
+
+// ============================
+// START MULTIPLAYER (setelah !tag)
+// ============================
+
+export async function startMultiplayer({ sock, msg, sender, reply, jid, opponent, sendTo }) {
   const playerState = gameStateManager.getPlayerState(sender);
   const bet = playerState?.data?.bet;
 
   if (!bet) {
     return reply(
-      `${config.ui.line}\n❌ Bet tidak ditemukan!\n\nCoba lagi dengan: !gas ttt <bet>\n\n${config.ui.line}`
+      `${config.ui.line}\n❌ Bet tidak ditemukan!\n\nCoba: !bet <jumlah>\n\n${config.ui.line}`
     );
   }
 
-  // Extract opponent jid if it's a mention
-  let opponentJid = opponent;
-  if (opponent.startsWith("@")) {
-    // Ini nickname, convert ke format jid (simplified)
-    opponentJid = opponent.replace("@", "");
-  }
-
-  const opponentUser = getUser(opponentJid);
+  const opponentUser = getUser(opponent);
   if (!opponentUser) {
     return reply(
-      `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\nLawan tidak terdaftar atau tidak ditemukan.\n\nCoba gunakan:\n!tag @opponent (dengan mention)\n\n${config.ui.line}`
+      `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\nLawan tidak ditemukan atau belum register.\n\n${config.ui.line}`
     );
   }
 
-  gameStateManager.setOpponent(sender, opponentJid);
-  
-  // Update with opponent info
-  gameStateManager.updateGameData(sender, { opponent: opponentJid, opponentName: opponentUser.nickname });
+  if (opponent === sender) {
+    return reply(
+      `${config.ui.line}\n❌⭕ TIC TAC TOE\n${config.ui.line}\n\nKamu tidak bisa melawan diri sendiri!\n\n${config.ui.line}`
+    );
+  }
+
+  if (gameStateManager.isPlayerInGame(opponent)) {
+    return reply(
+      `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n@${opponent.split("@")[0]} sedang dalam game lain!\n\n${config.ui.line}`,
+      [opponent]
+    );
+  }
+
+  // Buat invite
+  const inviteId = gameStateManager.createInvite(sender, opponent, "tictactoe", bet, jid);
+
+  const senderUser = getUser(sender);
+  const senderNum = sender.split("@")[0];
+  const oppNum = opponent.split("@")[0];
+
+  await sendTo(
+    jid,
+    `@${oppNum}\n${config.ui.line}\n┃ ❌⭕ UNDANGAN TIC TAC TOE\n${config.ui.line}\n\n` +
+    `@${senderNum} mengajakmu bermain Tic Tac Toe!\n\n` +
+    `💰 Bet: ${config.currencySymbol}${bet} masing-masing\n\n` +
+    `Jawab:\n✅ !accept\n❌ !decline\n\n⏰ Berlaku 2 menit\n\n${config.ui.line}`,
+    [opponent, sender]
+  );
 
   return reply(
-    `${config.ui.line}\n┃ TIC TAC TOE - MULTIPLAYER\n${config.ui.line}\n\n👤 Player 1: Kamu\n👤 Player 2: ${opponentUser.nickname}\n\n💰 Bet: ${config.currencySymbol}${bet}\n\nSiap main!\n!g atau !gas ttt <1-9>\n\nKeluar:\n!back atau !menu\n\n${config.ui.line}`
+    `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE - MULTIPLAYER\n${config.ui.line}\n\n` +
+    `📨 Undangan dikirim ke @${oppNum}!\n\nMenunggu jawaban...\n\n${config.ui.line}`,
+    [opponent]
   );
 }
 
-// ===== PLAY =====
-export async function play({
-  sock,
-  msg,
-  sender,
-  args,
-  reply,
-  isGroup,
-  groupJid
-}) {
-  if (!isGroup) {
+// ============================
+// ACCEPT INVITE
+// ============================
+
+export async function handleInviteAccepted({ sock, msg, sender, reply, jid, sendTo, invite }) {
+  const { from, bet } = invite;
+
+  const deduct1 = await subtractBalance(from, bet, "BET_TTT_MP");
+  if (!deduct1.success) {
+    gameStateManager.clearPlayerState(from);
     return reply(
-      `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\nGame ini hanya bisa dimainkan di dalam grup.\n\n${config.ui.line}`
+      `${config.ui.line}\n❌ Saldo @${from.split("@")[0]} tidak cukup!\n\nGame dibatalkan.\n\n${config.ui.line}`,
+      [from]
     );
   }
 
-  // ===== MOVE: !gas ttt <1-9> =====
-  if (args[0] && /^[1-9]$/.test(args[0])) {
-    return handleMove(sender, groupJid, parseInt(args[0], 10), reply);
-  }
-
-  // ===== START GAME: !gas ttt <bet> @tag (NEW FLOW) =====
-  const mentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
-  const betArg = args.find((a) => !isNaN(parseInt(a, 10)));
-  const bet = betArg ? parseInt(betArg, 10) : null;
-
-  if (bet && mentioned && mentioned.length > 0) {
-    // New flow: direct start with opponent tag
-    const opponent = mentioned[0];
-
-    if (opponent === sender) {
-      return reply(
-        `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\nKamu tidak bisa bermain dengan dirimu sendiri.\n\n${config.ui.line}`
-      );
-    }
-
-    const opponentUser = getUser(opponent);
-    if (!opponentUser) {
-      return reply(
-        `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\nLawan belum terdaftar di ${config.botName}.\n\n${config.ui.line}`
-      );
-    }
-
-    if (bet > 0) {
-      const deduction1 = await subtractBalance(sender, bet, "BET_TTT");
-      if (!deduction1.success) {
-        return reply(
-          `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\n❌ Saldo kamu tidak cukup!\n💰 Balance: ${config.currencySymbol}${deduction1.balance}\n\n${config.ui.line}`
-        );
-      }
-
-      const deduction2 = await subtractBalance(opponent, bet, "BET_TTT");
-      if (!deduction2.success) {
-        await addBalance(sender, bet, "REFUND_TTT");
-        return reply(
-          `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\n❌ Saldo lawan tidak cukup!\n\n${config.ui.line}`
-        );
-      }
-    }
-
-    const existingSender = getActiveGame(groupJid, sender);
-    const existingOpponent = getActiveGame(groupJid, opponent);
-
-    if (existingSender || existingOpponent) {
-      if (bet > 0) {
-        await addBalance(sender, bet, "REFUND_TTT");
-        await addBalance(opponent, bet, "REFUND_TTT");
-      }
-      return reply(
-        `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\nSalah satu pemain masih memiliki game yang berjalan.\n\n${config.ui.line}`
-      );
-    }
-
-    // Set game state
-    gameStateManager.setPlayerInGame(sender, "ttt");
-    gameStateManager.updateGameData(sender, { opponent, bet, groupJid });
-
-    const gameId = `${groupJid}_${Date.now()}`;
-    const board = [...EMPTY_BOARD];
-
-    db.prepare(
-      `INSERT INTO tictactoe_games (id, group_id, player_x, player_o, board, turn, bet, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'ongoing', ?)`
-    ).run(gameId, groupJid, sender, opponent, JSON.stringify(board), sender, bet, Date.now());
-
-    const senderUser = getUser(sender);
-
+  const deduct2 = await subtractBalance(sender, bet, "BET_TTT_MP");
+  if (!deduct2.success) {
+    await addBalance(from, bet, "REFUND_TTT_MP");
+    gameStateManager.clearPlayerState(from);
     return reply(
-      `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\n❌ ${senderUser.nickname}\n⭕ ${opponentUser.nickname}\n\n💰 Bet: ${config.currencySymbol}${bet} (masing-masing)\n\n${renderBoard(board)}\n\nTurn: ❌ ${senderUser.nickname}\n\nGunakan:\n!gas ttt <1-9>\n\n${config.ui.line}`
+      `${config.ui.line}\n❌ Saldo kamu tidak cukup!\n💰 Balance: ${config.currencySymbol}${deduct2.balance}\n\nGame dibatalkan.\n\n${config.ui.line}`
     );
   }
 
-  // Old flow: tag without bet
-  if (mentioned && mentioned.length > 0 && !bet) {
-    return reply(
-      `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\nFormat salah!\n\nGunakan:\n!gas ttt <bet> @tag\n\n${config.ui.line}`
-    );
-  }
+  const board = [...EMPTY_BOARD];
+  const gameId = `mp_${from}_${Date.now()}`;
+  const groupId = jid || from;
 
-  return reply(
-    `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\nFormat salah!\n\nGunakan:\n!gas ttt <bet> @tag\n\n${config.ui.line}`
+  db.prepare(
+    `INSERT INTO tictactoe_games (id, group_id, player_x, player_o, board, turn, bet, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'ongoing', ?)`
+  ).run(gameId, groupId, from, sender, JSON.stringify(board), from, bet, Date.now());
+
+  // Set state kedua player
+  gameStateManager.setMode(from, "multiplayer");
+  gameStateManager.setOpponent(from, sender);
+  gameStateManager.updateGameData(from, { bet, gameId, groupId });
+  gameStateManager.setPlayerInGame(from, "tictactoe");
+
+  gameStateManager.setModeSelection(sender, "tictactoe");
+  gameStateManager.setMode(sender, "multiplayer");
+  gameStateManager.setOpponent(sender, from);
+  gameStateManager.updateGameData(sender, { bet, gameId, groupId });
+  gameStateManager.setPlayerInGame(sender, "tictactoe");
+
+  const fromUser = getUser(from);
+  const toUser = getUser(sender);
+  const fromNum = from.split("@")[0];
+  const toNum = sender.split("@")[0];
+
+  await sendTo(
+    groupId,
+    `@${fromNum} @${toNum}\n${config.ui.line}\n┃ ❌⭕ TIC TAC TOE DIMULAI!\n${config.ui.line}\n\n` +
+    `❌ @${fromNum} (${fromUser?.nickname || "P1"})\n` +
+    `⭕ @${toNum} (${toUser?.nickname || "P2"})\n\n` +
+    `💰 Bet: ${config.currencySymbol}${bet} masing-masing\n\n` +
+    `${renderBoard(board)}\n\n` +
+    `🎯 Giliran: ❌ @${fromNum}\n\nPilih posisi: !g <1-9>\nKeluar: !back\n\n${config.ui.line}`,
+    [from, sender]
   );
 }
 
-async function handleMove(sender, groupJid, position, reply) {
-  const game = getActiveGame(groupJid, sender);
+// ============================
+// HANDLE GAME COMMANDS (!g, !bet, !gas)
+// ============================
 
+export async function handleGameCommand({ sender, args, reply, command, jid, sendTo }) {
+  const playerState = gameStateManager.getPlayerState(sender);
+
+  if (command === "bet") {
+    const bet = args[0] ? parseInt(args[0], 10) : null;
+    if (!bet || bet <= 0) {
+      return reply(
+        `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\nFormat salah!\n\nGunakan: !bet <jumlah>\n\n${config.ui.line}`
+      );
+    }
+    gameStateManager.updateGameData(sender, { bet });
+    return reply(
+      `${config.ui.line}\n✅ Bet tersimpan!\n\n💰 ${config.currencySymbol}${bet}\n\nPilih mode:\n!1 = 🤖 BOT\n!2 = 👤 PLAYER\n\n${config.ui.line}`
+    );
+  }
+
+  if (command === "g" || command === "gas") {
+    // Cek apakah ada game aktif (multiplayer di group)
+    const groupId = playerState?.data?.groupId || jid;
+    const existing = groupId ? getActiveGame(groupId, sender) : getActiveGameByPlayer(sender);
+
+    if (!existing) {
+      // Belum ada game - mulai baru jika ada bet di args
+      const bet = args[0] && !isNaN(parseInt(args[0])) ? parseInt(args[0], 10) : playerState?.data?.bet;
+      if (!bet || bet <= 0) {
+        return reply(
+          `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\nSet bet dulu!\n\nGunakan: !bet <jumlah>\natau: !g <bet>\n\n${config.ui.line}`
+        );
+      }
+      const mode = gameStateManager.getMode(sender) || "bot";
+      gameStateManager.updateGameData(sender, { bet });
+      if (mode === "bot") {
+        gameStateManager.setMode(sender, "bot");
+        return startBotGame({ sender, bet, reply, jid });
+      } else {
+        return reply(
+          `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\nTag lawan dulu:\n!tag @lawan\n\n${config.ui.line}`
+        );
+      }
+    }
+
+    // Ada game - proses move
+    const posArg = args[0];
+    const pos = posArg ? parseInt(posArg, 10) : null;
+
+    if (!pos || pos < 1 || pos > 9) {
+      const board = JSON.parse(existing.board);
+      const turnUser = getUser(existing.turn);
+      const turnSymbol = existing.turn === existing.player_x ? "❌" : "⭕";
+      return reply(
+        `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n` +
+        `${renderBoard(board)}\n\n` +
+        `Giliran: ${turnSymbol} ${turnUser?.nickname || existing.turn}\n\n` +
+        `Pilih: !g <1-9>\nKeluar: !back\n\n${config.ui.line}`
+      );
+    }
+
+    return handleMove({ sender, pos, reply, jid, sendTo, existing });
+  }
+}
+
+// ============================
+// HANDLE MOVE
+// ============================
+
+async function handleMove({ sender, pos, reply, jid, sendTo, existing: game }) {
   if (!game) {
     return reply(
-      `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\nKamu tidak memiliki game yang berjalan di grup ini.\n\n${config.ui.line}`
+      `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\nTidak ada game aktif.\n\n${config.ui.line}`
     );
   }
 
   if (game.turn !== sender) {
+    const turnUser = getUser(game.turn);
+    const turnNum = game.turn?.split("@")[0];
     return reply(
-      `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\nBukan giliran kamu!\n\n${config.ui.line}`
+      `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\nBukan giliranmu!\n\nGiliran: @${turnNum}\n\n${config.ui.line}`,
+      [game.turn]
     );
   }
 
   const board = JSON.parse(game.board);
-  const idx = position - 1;
+  const idx = pos - 1;
 
   if (board[idx] === "X" || board[idx] === "O") {
     return reply(
-      `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\nPosisi ${position} sudah terisi!\n\n${renderBoard(board)}\n\n${config.ui.line}`
+      `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\nPosisi ${pos} sudah terisi!\n\n${renderBoard(board)}\n\n${config.ui.line}`
     );
   }
 
@@ -269,59 +427,114 @@ async function handleMove(sender, groupJid, position, reply) {
   const winner = checkWinner(board);
   const playerXUser = getUser(game.player_x);
   const playerOUser = getUser(game.player_o);
+  const isBot = game.player_o === "BOT";
+  const groupId = game.group_id;
+  const mentionsList = isBot ? [sender] : [game.player_x, game.player_o];
 
   if (winner) {
-    db.prepare("UPDATE tictactoe_games SET board = ?, status = 'finished' WHERE id = ?").run(
-      JSON.stringify(board),
-      game.id
-    );
+    db.prepare("UPDATE tictactoe_games SET board = ?, status = 'finished' WHERE id = ?")
+      .run(JSON.stringify(board), game.id);
 
     if (winner === "DRAW") {
       if (game.bet > 0) {
-        const { addBalance } = await import("../utils/economy.js");
         await addBalance(game.player_x, game.bet, "REFUND_TTT_DRAW");
-        await addBalance(game.player_o, game.bet, "REFUND_TTT_DRAW");
+        if (!isBot) await addBalance(game.player_o, game.bet, "REFUND_TTT_DRAW");
       }
       await recordGameResult(game.player_x, false, 0, "GAME_TTT_DRAW");
-      await recordGameResult(game.player_o, false, 0, "GAME_TTT_DRAW");
+      if (!isBot) await recordGameResult(game.player_o, false, 0, "GAME_TTT_DRAW");
+
+      gameStateManager.clearPlayerState(sender);
+      if (!isBot) gameStateManager.clearPlayerState(game.player_o);
 
       return reply(
-        `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\n${renderBoard(board)}\n\n🤝 *SERI!*\nBet dikembalikan.\n\n${config.ui.line}`
+        `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n${renderBoard(board)}\n\n🤝 *SERI!*\nBet dikembalikan.\n\nMain lagi: !ttt <bet>\n\n${config.ui.line}`,
+        mentionsList
       );
     }
 
     const winnerJid = winner === "X" ? game.player_x : game.player_o;
     const loserJid = winner === "X" ? game.player_o : game.player_x;
     const winnerUser = winner === "X" ? playerXUser : playerOUser;
-
-    const totalPot = game.bet * 2;
+    const totalPot = game.bet * (isBot ? 2 : 2);
 
     if (game.bet > 0) {
-      const { addBalance } = await import("../utils/economy.js");
       await addBalance(winnerJid, totalPot, "WIN_TTT");
     }
-
     await recordGameResult(winnerJid, true, 0, "GAME_TTT_WIN");
-    await recordGameResult(loserJid, false, 0, "GAME_TTT_LOSE");
+    if (!isBot) await recordGameResult(loserJid, false, 0, "GAME_TTT_LOSE");
+
+    gameStateManager.clearPlayerState(sender);
+    if (!isBot && loserJid !== "BOT") gameStateManager.clearPlayerState(loserJid);
+
+    const winnerNum = winnerJid?.split("@")[0];
 
     return reply(
-      `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\n${renderBoard(board)}\n\n🎉 *${winnerUser.nickname} MENANG!*\n💰 +${config.currencySymbol}${totalPot}\n\n${config.ui.line}`
+      `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n${renderBoard(board)}\n\n` +
+      `🎉 *${winnerUser?.nickname || "Pemenang"} MENANG!*\n` +
+      `💰 +${config.currencySymbol}${totalPot}\n\nMain lagi: !ttt <bet>\n\n${config.ui.line}`,
+      mentionsList
     );
   }
 
-  const nextTurn = sender === game.player_x ? game.player_o : game.player_x;
-  db.prepare("UPDATE tictactoe_games SET board = ?, turn = ? WHERE id = ?").run(
-    JSON.stringify(board),
-    nextTurn,
-    game.id
-  );
+  // Jika lawan BOT, bot bergerak otomatis
+  let nextTurn = sender === game.player_x ? game.player_o : game.player_x;
+
+  if (isBot && nextTurn === "BOT") {
+    const botIdx = getBotMove(board);
+    if (botIdx !== undefined && botIdx !== null) {
+      board[botIdx] = "O";
+      const botWinner = checkWinner(board);
+
+      if (botWinner) {
+        db.prepare("UPDATE tictactoe_games SET board = ?, status = 'finished' WHERE id = ?")
+          .run(JSON.stringify(board), game.id);
+
+        if (botWinner === "DRAW") {
+          if (game.bet > 0) await addBalance(sender, game.bet, "REFUND_TTT_BOT_DRAW");
+          await recordGameResult(sender, false, 0, "GAME_TTT_BOT_DRAW");
+          gameStateManager.clearPlayerState(sender);
+          return reply(
+            `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n${renderBoard(board)}\n\n🤝 SERI!\nBet dikembalikan.\n\n${config.ui.line}`
+          );
+        }
+
+        if (botWinner === "O") {
+          // BOT menang
+          await recordGameResult(sender, false, 0, "GAME_TTT_BOT_LOSE");
+          gameStateManager.clearPlayerState(sender);
+          return reply(
+            `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n${renderBoard(board)}\n\n🤖 BOT MENANG!\n💸 -${config.currencySymbol}${game.bet}\n\nMain lagi: !ttt <bet>\n\n${config.ui.line}`
+          );
+        }
+      }
+
+      // Game lanjut setelah bot gerak
+      db.prepare("UPDATE tictactoe_games SET board = ?, turn = ? WHERE id = ?")
+        .run(JSON.stringify(board), sender, game.id);
+
+      return reply(
+        `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n` +
+        `${renderBoard(board)}\n\n🤖 Bot memilih: ${botIdx + 1}\n\nGiliranmu! Pilih: !g <1-9>\n\n${config.ui.line}`
+      );
+    }
+  }
+
+  // Multiplayer - ganti giliran
+  db.prepare("UPDATE tictactoe_games SET board = ?, turn = ? WHERE id = ?")
+    .run(JSON.stringify(board), nextTurn, game.id);
 
   const nextUser = getUser(nextTurn);
   const nextSymbol = nextTurn === game.player_x ? "❌" : "⭕";
+  const nextNum = nextTurn?.split("@")[0];
 
   return reply(
-    `${config.ui.line}\n┃ TIC TAC TOE\n${config.ui.line}\n\n${renderBoard(board)}\n\nTurn: ${nextSymbol} ${nextUser.nickname}\n\n${config.ui.line}`
+    `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n${renderBoard(board)}\n\n` +
+    `🎯 Giliran: ${nextSymbol} @${nextNum}\n\nPilih: !g <1-9>\nKeluar: !back\n\n${config.ui.line}`,
+    mentionsList
   );
 }
 
-export default { name, aliases, requiresRegistration, isGasGame, execute, play, playWithMode, startMultiplayer };
+export default {
+  name, aliases, requiresRegistration, isGasGame,
+  execute, playWithMode, handleGameCommand, startMultiplayer, handleInviteAccepted
+};

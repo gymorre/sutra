@@ -69,4 +69,21 @@ CREATE TABLE IF NOT EXISTS blackjack_games (
 );
 `);
 
+db.exec(`
+CREATE TABLE IF NOT EXISTS fruitbomb_games (
+  jid TEXT PRIMARY KEY,
+  bet INTEGER NOT NULL,
+  board TEXT NOT NULL,
+  bombs TEXT NOT NULL,
+  fruits_found INTEGER NOT NULL DEFAULT 0,
+  picked TEXT NOT NULL DEFAULT '[]',
+  current_multiplier REAL NOT NULL DEFAULT 1.0,
+  mode TEXT NOT NULL DEFAULT 'bot',
+  opponent TEXT,
+  whose_turn TEXT,
+  status TEXT NOT NULL DEFAULT 'ongoing',
+  created_at INTEGER NOT NULL
+);
+`);
+
 export default db;

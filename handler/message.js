@@ -44,11 +44,47 @@ export async function handleMessage(sock, msg) {
     const command = parts[0].toLowerCase();
     const args = parts.slice(1);
 
-    const reply = async (content) => {
+    // Helper: nomor WA tanpa @s.whatsapp.net
+    const senderNum = sender.split("@")[0];
+
+    /**
+     * Reply dengan auto-tag @sender dan quote pesan original
+     * @param {string|object} content
+     * @param {string[]} extraMentions - JID tambahan yang perlu di-mention
+     */
+    const reply = async (content, extraMentions = []) => {
+      const mentions = [sender, ...extraMentions].filter(
+        (v, i, a) => v && a.indexOf(v) === i
+      );
+
       if (typeof content === "string") {
-        return sock.sendMessage(jid, { text: content }, { quoted: msg });
+        const text = `@${senderNum}\n${content}`;
+        return sock.sendMessage(jid, { text, mentions }, { quoted: msg });
       }
-      return sock.sendMessage(jid, content, { quoted: msg });
+
+      // Object content (misalnya dengan image, dll)
+      if (content.text) {
+        content.text = `@${senderNum}\n${content.text}`;
+      }
+      return sock.sendMessage(
+        jid,
+        { ...content, mentions },
+        { quoted: msg }
+      );
+    };
+
+    /**
+     * Kirim pesan ke JID lain (untuk notify opponent)
+     * @param {string} targetJid - JID tujuan (bisa group atau private)
+     * @param {string} text
+     * @param {string[]} mentionJids - JID yang perlu di-mention dalam teks
+     */
+    const sendTo = async (targetJid, text, mentionJids = []) => {
+      return sock.sendMessage(
+        targetJid,
+        { text, mentions: mentionJids },
+        { quoted: msg }
+      );
     };
 
     const ctx = {
@@ -56,12 +92,14 @@ export async function handleMessage(sock, msg) {
       msg,
       jid,
       sender,
+      senderNum,
       isGroup,
       groupJid,
       command,
       args,
       text,
-      reply
+      reply,
+      sendTo
     };
 
     await executeCommand(ctx);
