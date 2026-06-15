@@ -10,9 +10,9 @@ export const requiresRegistration = false;
 
 export async function execute({ reply }) {
   const text =
-`⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+`══════════════════════
 📂 MENU > 📂 *GAME*
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+══════════════════════
 
 🎲 *DAFTAR GAME*
 │
@@ -35,7 +35,7 @@ export async function execute({ reply }) {
       └─ Tantang teman bermain!
       └─ (Reme & TicTacToe)
 
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+══════════════════════
 
 📋 *CARA MAIN*
 │
@@ -44,7 +44,7 @@ export async function execute({ reply }) {
 ├── 3️⃣ Main: !g <aksi>
 └── 🚪 Keluar: !back atau !menu
 
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+══════════════════════
 
 💰 *EKONOMI*
 │
@@ -60,7 +60,7 @@ export async function execute({ reply }) {
 └── 💸 *!transfer* / *!tf*
       └─ Kirim saldo ke pemain lain
 
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+══════════════════════
 
 🎁 *REWARD*
 │
@@ -69,7 +69,7 @@ export async function execute({ reply }) {
 ├── 📆 *!weekly*  → +${config.currencySymbol}${config.reward.weekly.amount}
 └── 🗓️ *!monthly* → +${config.currencySymbol}${config.reward.monthly.amount}
 
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+══════════════════════
 📁 _Ketik !menu untuk kembali_`;
 
   return reply(text);

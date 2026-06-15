@@ -230,7 +230,23 @@ export async function executeCommand(ctx) {
     } else if (state === "WAITING_INVITE") {
       allowed = WAITING_INVITE_ALLOWED;
     } else if (state === "FINISHED") {
-      allowed = FINISHED_ALLOWED;
+      allowed = new Set([...FINISHED_ALLOWED]);
+      // Izinkan command game untuk main lagi
+      allowed.add("g");
+      allowed.add("gas");
+      allowed.add("bet");
+      allowed.add("cash");
+      if (activeGame) {
+        allowed.add(activeGame);
+        const gameCmd = gameCommands.get(activeGame);
+        if (gameCmd && gameCmd.aliases) {
+          gameCmd.aliases.forEach(alias => allowed.add(alias));
+        }
+        // Izinkan angka 1-9 untuk TicTacToe dan FruitBomb
+        if (activeGame === "tictactoe" || activeGame === "fb") {
+          ["1", "2", "3", "4", "5", "6", "7", "8", "9"].forEach(n => allowed.add(n));
+        }
+      }
     } else if (state === "IN_GAME") {
       allowed = IN_GAME_ALLOWED;
       // Izinkan angka 1-9 untuk TicTacToe dan FruitBomb
@@ -289,9 +305,14 @@ export async function executeCommand(ctx) {
   // 6. IN-GAME QUICK COMMANDS (!g, !bet, !gas, !cash)
   //    Juga digit 1-9 saat TTT atau FruitBomb
   // ============================
-  if (playerState?.state === "IN_GAME") {
+  if (playerState?.state === "IN_GAME" || playerState?.state === "FINISHED") {
     const activeGame = playerState.game;
     const gameCmd = commands.get(activeGame);
+
+    // Jika state player masih FINISHED, kita set ke IN_GAME kembali karena game dimulai lagi
+    if (playerState.state === "FINISHED" && activeGame) {
+      gameStateManager.setPlayerInGame(sender, activeGame);
+    }
 
     // Angka 1-9 langsung → !g <angka> untuk TTT / FruitBomb
     if (/^[1-9]$/.test(command) && (activeGame === "tictactoe" || activeGame === "fb")) {

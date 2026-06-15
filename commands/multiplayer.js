@@ -54,14 +54,14 @@ export async function execute({ sender, args, reply }) {
   const gameLabel = game === "re" ? "REME" : "TIC TAC TOE";
 
   return reply(
-    `⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘\n` +
+    `${config.ui.line}\n` +
     `⚔️ MULTIPLAYER LOBBY (${gameLabel})\n` +
-    `⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘\n\n` +
+    `${config.ui.line}\n\n` +
     `💰 Taruhan: ${config.currencySymbol}${bet}\n\n` +
     `Silakan tag/sebut lawan yang ingin Anda tantang!\n` +
     `Ketik nama lawan, tag, atau reply pesan lawan.\n\n` +
     `Keluar: !back\n` +
-    `⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘`
+    `${config.ui.line}`
   );
 }
 

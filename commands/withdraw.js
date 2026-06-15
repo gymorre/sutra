@@ -8,16 +8,16 @@ export const requiresRegistration = false;
 
 export async function execute({ reply }) {
   return reply(
-`⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+`══════════════════════
 📂 MENU > 📂 *WITHDRAW*
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+══════════════════════
 
 🔒 *Coming Soon*
 
 Fitur withdraw sedang dalam pengembangan.
 Nantikan update selanjutnya!
 
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+══════════════════════
 📁 _Ketik !menu untuk kembali_`
   );
 }

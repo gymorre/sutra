@@ -10,9 +10,9 @@ export async function execute({ sock, reply }) {
   const botNumber = sock.user?.id ? sock.user.id.split(":")[0] : config.ownerNumber;
   const inviteLink = `https://wa.me/${botNumber}?text=!menu`;
 
-  const text = `⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+  const text = `══════════════════════
 📂 MENU > 📂 *INVITE*
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+══════════════════════
 
 👥 *INVITE SUTRA BOT*
 
@@ -28,7 +28,7 @@ Klik link di bawah ini untuk mulai interaksi dan mengundang bot:
 
 _Bikin grup kamu makin rame dan seru dengan SUTRA BOT!_ 🚀
 
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+══════════════════════
 📁 _Ketik !menu untuk kembali_`;
 
   return reply(text);

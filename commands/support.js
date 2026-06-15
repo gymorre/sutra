@@ -7,9 +7,9 @@ export const aliases = [];
 export const requiresRegistration = false;
 
 export async function execute({ reply }) {
-  const text = `⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+  const text = `══════════════════════
 📂 MENU > 📂 *SUPPORT*
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+══════════════════════
 
 📞 *SUPPORT CENTER*
 
@@ -20,7 +20,7 @@ Silakan hubungi team support kami melalui WhatsApp utama:
 
 Kami akan segera merespons laporan Anda! Terima kasih. :D
 
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+══════════════════════
 📁 _Ketik !menu untuk kembali_`;
 
   return reply(text);

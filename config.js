@@ -35,7 +35,7 @@ export const config = {
 
   // Style border UI
   ui: {
-    line: "━━━━━━━━━━━━━━━━━━━━━━",
+    line: "══════════════════════",
     doubleLine: "══════════════════════"
   }
 };

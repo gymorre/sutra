@@ -36,9 +36,9 @@ export async function execute({ reply }) {
       { code: "CAD", name: "Canadian Dollar (Kanada)    ", flag: "🇨🇦" }
     ];
 
-    let text = `⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+    let text = `══════════════════════
 📂 MENU > 📂 *KURS*
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+══════════════════════
 
 💱 *KURS REALTIME (1 MATA UANG -> RUPIAH)*
 
@@ -60,21 +60,21 @@ export async function execute({ reply }) {
 Update terakhir: ${data.date || "-"}
 Sumber: ExchangeRate-API
 
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+══════════════════════
 📁 _Ketik !menu untuk kembali_`;
 
     return reply(text);
   } catch (err) {
     console.error("Error fetching exchange rates:", err);
     return reply(
-`⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+`══════════════════════
 📂 MENU > 📂 *KURS*
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+══════════════════════
 
 ❌ *Gagal mengambil data kurs secara realtime.*
 Silakan coba lagi nanti.
 
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+══════════════════════
 📁 _Ketik !menu untuk kembali_`
     );
   }

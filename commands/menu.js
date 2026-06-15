@@ -42,59 +42,36 @@ export async function execute({ reply }) {
   const version = getBotVersion();
 
   const menuText =
-`⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+`══════════════════════
 █▀ █░█ ▀█▀ █▀█ ▄▀█
 ▄█ █▄█ ░█░ █▀▄ █▀█
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+══════════════════════
 🟢 STATUS : *ONLINE*
 🕐 TIME   : ${timeWIB}
 
-👤 Bot created by @aditias
-📦 Version : *${version}*
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+_Bot created by @aditias_
+_Version : ${version}_
+══════════════════════
 
 📂 */MENU*
 │
 ├── 📂 *!Game*
-│     ├── 🎲 Daftar Game
-│     ├── 💰 Ekonomi
-│     ├── 🎁 Reward
-│     └── _Ketik !game untuk buka_
-│
 ├── 📂 *!Deposit*
-│     └── 🔒 Coming Soon
-│
 ├── 📂 *!Withdraw*
-│     └── 🔒 Coming Soon
-│
 ├── 📂 *!Kurs*
-│     └── 💱 Kurs 10 Negara vs Rupiah
-│     └── _Ketik !kurs untuk buka_
-│
 ├── 📂 *!Idx*
-│     └── 🔒 Coming Soon
-│
 ├── 📂 *!Dv*
-│     └── 🔒 Coming Soon
-│
 ├── 📂 *!Support*
-│     └── 📞 Hubungi Team Support
-│     └── _Ketik !support untuk buka_
-│
 ├── 📂 *!Invite*
-│     └── 👥 Undang Bot ke Grup
-│     └── _Ketik !invite untuk buka_
-│
 └── ⏳ *More Feature Coming Soon*
 
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+══════════════════════
 📌 *NOTE:*
 Bot masih dalam tahap pengembangan *(BETA)*
 Jika menemukan bug harap segera lapor ke
 team support kami :D
-⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
-
-💡 _Ketik nama folder untuk membukanya!_`;
+══════════════════════
+`;
 
   return reply(menuText);
 }
