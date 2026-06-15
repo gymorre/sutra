@@ -427,7 +427,7 @@ async function startBotGame({ sender, bet, reply }) {
     renderBoard(cells, []) + "\n\n" +
     `${renderMultiplierBar(0)}\n` +
     `📈 Multiplier: 1.0x\n\n` +
-    `🎯 Pilih kotak 1-9!\nMisal: !g 5\n\nCairkan: !cash\nKeluar: !back\n\n${config.ui.line}`
+    `🎯 Pilih kotak 1-9!\n\nCairkan: !cash\nKeluar: !back\n\n${config.ui.line}`
   );
 }
 
