@@ -8,7 +8,17 @@ export const requiresRegistration = false;
 
 export async function execute({ reply }) {
   return reply(
-    `${config.ui.line}\n┃ DV\n${config.ui.line}\n\nComing Soon\n\n${config.ui.line}`
+`⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+📂 MENU > 📂 *DV*
+⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+
+🔒 *Coming Soon*
+
+Fitur DV sedang dalam pengembangan.
+Nantikan update selanjutnya!
+
+⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+📁 _Ketik !menu untuk kembali_`
   );
 }
 

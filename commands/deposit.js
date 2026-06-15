@@ -8,7 +8,17 @@ export const requiresRegistration = false;
 
 export async function execute({ reply }) {
   return reply(
-    `${config.ui.line}\n┃ DEPOSIT\n${config.ui.line}\n\nComing Soon\n\n${config.ui.line}`
+`⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+📂 MENU > 📂 *DEPOSIT*
+⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+
+🔒 *Coming Soon*
+
+Fitur deposit sedang dalam pengembangan.
+Nantikan update selanjutnya!
+
+⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+📁 _Ketik !menu untuk kembali_`
   );
 }
 

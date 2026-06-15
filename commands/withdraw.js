@@ -8,7 +8,17 @@ export const requiresRegistration = false;
 
 export async function execute({ reply }) {
   return reply(
-    `${config.ui.line}\n┃ WITHDRAW\n${config.ui.line}\n\nComing Soon\n\n${config.ui.line}`
+`⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+📂 MENU > 📂 *WITHDRAW*
+⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+
+🔒 *Coming Soon*
+
+Fitur withdraw sedang dalam pengembangan.
+Nantikan update selanjutnya!
+
+⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+📁 _Ketik !menu untuk kembali_`
   );
 }
 

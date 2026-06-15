@@ -36,9 +36,13 @@ export async function execute({ reply }) {
       { code: "CAD", name: "Canadian Dollar (Kanada)    ", flag: "🇨🇦" }
     ];
 
-    let text = `${config.ui.line}\n`;
-    text += `┃ 💱 KURS REALTIME (1 MATA UANG -> RUPIAH)\n`;
-    text += `${config.ui.line}\n\n`;
+    let text = `⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+📂 MENU > 📂 *KURS*
+⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+
+💱 *KURS REALTIME (1 MATA UANG -> RUPIAH)*
+
+`;
 
     for (const cur of currs) {
       const val = getIrdVal(cur.code);
@@ -52,16 +56,26 @@ export async function execute({ reply }) {
       }
     }
 
-    text += `\n${config.ui.line}\n`;
-    text += `Update terakhir: ${data.date || "-"}\n`;
-    text += `Sumber: ExchangeRate-API\n`;
-    text += `${config.ui.line}`;
+    text += `
+Update terakhir: ${data.date || "-"}
+Sumber: ExchangeRate-API
+
+⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+📁 _Ketik !menu untuk kembali_`;
 
     return reply(text);
   } catch (err) {
     console.error("Error fetching exchange rates:", err);
     return reply(
-      `${config.ui.line}\n┃ KURS\n${config.ui.line}\n\nGagal mengambil data kurs secara realtime.\nSilakan coba lagi nanti.\n\n${config.ui.line}`
+`⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+📂 MENU > 📂 *KURS*
+⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+
+❌ *Gagal mengambil data kurs secara realtime.*
+Silakan coba lagi nanti.
+
+⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘
+📁 _Ketik !menu untuk kembali_`
     );
   }
 }
