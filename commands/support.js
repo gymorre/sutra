@@ -7,24 +7,17 @@ export const aliases = [];
 export const requiresRegistration = false;
 
 export async function execute({ reply }) {
-  const text = `${config.ui.doubleLine}
+  const text = `${config.ui.line}
 ┃ SUPPORT
-${config.ui.doubleLine}
+${config.ui.line}
 
 Butuh bantuan?
 
-Hubungi support kami:
-👤 ${config.supportName}
-📞 wa.me/${config.supportNumber}
-
-${config.ui.line}
-
-Alternatif:
 Hubungi owner:
 👤 ${config.ownerName}
 📞 wa.me/${config.ownerNumber}
 
-${config.ui.doubleLine}`;
+${config.ui.line}`;
 
   return reply(text);
 }
