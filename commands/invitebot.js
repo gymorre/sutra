@@ -28,8 +28,7 @@ Klik link di bawah ini untuk mulai interaksi dan mengundang bot:
 
 _Bikin grup kamu makin rame dan seru dengan SUTRA BOT!_ 🚀
 
-══════════════════════
-📁 _Ketik !menu untuk kembali_`;
+══════════════════════`;
 
   return reply(text);
 }
