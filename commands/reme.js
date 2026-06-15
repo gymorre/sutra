@@ -1,12 +1,13 @@
 // commands/reme.js
 // Game Reme - angka acak 0-36, 50/50 menang/kalah
-// Flow baru: !reme → pilih mode → !bet/!g/!gas untuk main
+// Flow baru: !reme -> set bet -> main solo. Jika mau duo/multiplayer, lewat !multiplayer.
 
 import { subtractBalance, recordGameResult, addBalance, getUser, getUserByNickname } from "../utils/economy.js";
 import { randomInt } from "../utils/random.js";
-import { animateMessage, remeRollingFrames, multiplayerStartFrames, sleep } from "../utils/animation.js";
+import { animateMessage, remeRollingFrames, sleep } from "../utils/animation.js";
 import { gameStateManager } from "../utils/gameState.js";
 import { config } from "../config.js";
+import { startChallengeCountdown } from "./multiplayer.js";
 
 export const name = "re";
 export const aliases = ["reme"];
@@ -21,31 +22,25 @@ export async function execute({ sender, args, reply }) {
   const betArg = args[0];
   const bet = betArg ? parseInt(betArg, 10) : null;
 
-  // Jika ada bet langsung, set state dan minta pilih mode
+  // Set state langsung ke IN_GAME dengan mode bot
+  gameStateManager.setPlayerInGame(sender, "re");
+  gameStateManager.setMode(sender, "bot");
+
   if (bet && bet > 0) {
-    gameStateManager.setModeSelection(sender, "re");
     gameStateManager.updateGameData(sender, { bet });
-    return reply(
-      `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\n` +
-      `💰 Bet: ${config.currencySymbol}${bet}\n\n` +
-      `Pilih mode:\n!1 = 🤖 Lawan BOT\n!2 = 👤 Lawan PLAYER\n\n` +
-      `Keluar: !back\n\n${config.ui.line}`
-    );
+    return playSingleplayer({ sender, bet, reply });
   }
 
-  // Tampilkan info game + minta masuk
-  gameStateManager.setModeSelection(sender, "re");
   return reply(
-    `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\n` +
-    `Reme adalah game angka acak 0-36.\nKemenangan: 50/50!\n\n` +
-    `Set bet:\n!bet <jumlah>\n\natau langsung main:\n!g <jumlah>\n\n` +
-    `Pilih mode lawan:\n!1 = 🤖 BOT\n!2 = 👤 PLAYER\n\n` +
+    `${config.ui.line}\n┃ 🎲 GAME REME (SOLO vs BOT)\n${config.ui.line}\n\n` +
+    `Reme adalah game angka acak 0-36 (50/50).\n\n` +
+    `Set bet untuk main:\n!bet <jumlah>\n\natau langsung main:\n!g <jumlah>\n\n` +
     `Keluar: !back atau !menu\n\n${config.ui.line}`
   );
 }
 
 // ============================
-// PLAY WITH MODE (setelah !1 / !2)
+// PLAY WITH MODE (Dipanggil via Multiplayer/Lobby)
 // ============================
 
 export async function playWithMode({ sender, args, reply, mode }) {
@@ -87,13 +82,13 @@ export async function handleGameCommand({ sender, args, reply, command }) {
     const bet = args[0] ? parseInt(args[0], 10) : null;
     if (!bet || bet <= 0) {
       return reply(
-        `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\nFormat salah!\n\nGunakan: !bet <jumlah>\n\nContoh: !bet 300\n\n${config.ui.line}`
+        `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\nFormat salah!\n\nGunakan: !bet <jumlah>\n\n${config.ui.line}`
       );
     }
 
     gameStateManager.updateGameData(sender, { bet });
     return reply(
-      `${config.ui.line}\n✅ Bet tersimpan!\n\n💰 ${config.currencySymbol}${bet}\n\nMain sekarang: !g\n\nAtau pilih mode:\n!1 = 🤖 BOT\n!2 = 👤 PLAYER\n\n${config.ui.line}`
+      `${config.ui.line}\n✅ Bet tersimpan!\n\n💰 ${config.currencySymbol}${bet}\n\nMain sekarang: !g\n\n${config.ui.line}`
     );
   }
 
@@ -106,7 +101,6 @@ export async function handleGameCommand({ sender, args, reply, command }) {
       );
     }
 
-    // Simpan bet jika dari args
     if (args[0]) gameStateManager.updateGameData(sender, { bet });
 
     const mode = gameStateManager.getMode(sender);
@@ -115,7 +109,7 @@ export async function handleGameCommand({ sender, args, reply, command }) {
       const opponent = gameStateManager.getOpponent(sender);
       if (!opponent) {
         return reply(
-          `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\nTag lawan dulu:\n!tag @lawan\natau !tag nickname\n\n${config.ui.line}`
+          `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\nTag lawan dulu:\n!tag @lawan\n\n${config.ui.line}`
         );
       }
       return playMultiplayer({ sender, bet, reply, opponent });
@@ -152,7 +146,7 @@ export async function startMultiplayer({ sock, msg, sender, reply, jid, opponent
     );
   }
 
-  if (opponent === sender) {
+  if (opponentJid === sender) {
     return reply(
       `${config.ui.line}\n🎲 GAME REME\n${config.ui.line}\n\nKamu tidak bisa melawan diri sendiri!\n\n${config.ui.line}`
     );
@@ -165,28 +159,7 @@ export async function startMultiplayer({ sock, msg, sender, reply, jid, opponent
     );
   }
 
-  // Buat invite
-  const inviteId = gameStateManager.createInvite(sender, opponentJid, "re", bet, jid);
-
-  const senderUser = getUser(sender);
-  const senderNum = sender.split("@")[0];
-  const oppNum = opponentJid.split("@")[0];
-
-  // Kirim invite ke opponent
-  await sendTo(
-    jid,
-    `@${oppNum}\n${config.ui.line}\n┃ 🎲 UNDANGAN REME\n${config.ui.line}\n\n` +
-    `@${senderNum} mengajakmu bermain Reme!\n\n` +
-    `💰 Bet: ${config.currencySymbol}${bet} masing-masing\n\n` +
-    `Jawab:\n✅ !accept\n❌ !decline\n\n⏰ Berlaku 2 menit\n\n${config.ui.line}`,
-    [opponentJid, sender]
-  );
-
-  return reply(
-    `${config.ui.line}\n┃ 🎲 GAME REME - MULTIPLAYER\n${config.ui.line}\n\n` +
-    `📨 Undangan dikirim ke @${oppNum}!\n\nMenunggu jawaban...\n\n${config.ui.line}`,
-    [opponentJid]
-  );
+  return startChallengeCountdown({ sock, jid, sender, opponentJid, gameCode: "re", bet, sendTo });
 }
 
 // ============================
@@ -217,6 +190,15 @@ export async function handleInviteAccepted({ sock, msg, sender, reply, jid, send
   const fromNum = from.split("@")[0];
   const toNum = sender.split("@")[0];
 
+  // Set state both players to IN_GAME
+  gameStateManager.setPlayerInGame(from, "re");
+  gameStateManager.setMode(from, "multiplayer");
+  gameStateManager.setOpponent(from, sender);
+
+  gameStateManager.setPlayerInGame(sender, "re");
+  gameStateManager.setMode(sender, "multiplayer");
+  gameStateManager.setOpponent(sender, from);
+
   // === ANIMASI MULTIPLAYER START ===
   const header = `${config.ui.line}\n┃ 🎲 REME MULTIPLAYER\n${config.ui.line}`;
   const startInfo = `👤 @${fromNum} vs 👤 @${toNum}\n💰 Bet: ${config.currencySymbol}${bet} masing-masing`;
@@ -232,9 +214,7 @@ export async function handleInviteAccepted({ sock, msg, sender, reply, jid, send
 
   // === ANIMASI ROLLING ===
   const rollingFrames = remeRollingFrames(header, "");
-  // Hanya tampilkan frame rolling tanpa final (kita kirim final terpisah)
-  const rollSent = await animateMessage(sock, jid, rollingFrames.slice(0, 5), 600);
-
+  await animateMessage(sock, jid, rollingFrames.slice(0, 5), 600);
   await sleep(400);
 
   const p1Number = randomInt(0, 36);
@@ -266,12 +246,15 @@ export async function handleInviteAccepted({ sock, msg, sender, reply, jid, send
       `💸 @${toNum} kalah -${config.currencySymbol}${bet}`;
   }
 
-  gameStateManager.clearPlayerState(from);
-  gameStateManager.clearPlayerState(sender);
+  // Lock state to FINISHED instead of clearing
+  gameStateManager.setFinished(from);
+  gameStateManager.setFinished(sender);
 
   await sendTo(
     jid,
-    `@${fromNum} @${toNum}\n${config.ui.line}\n┃ 🎲 HASIL REME\n${config.ui.line}\n\n${resultText}\n\n${config.ui.line}`,
+    `@${fromNum} @${toNum}\n${config.ui.line}\n┃ 🎲 HASIL REME\n${config.ui.line}\n\n${resultText}\n\n` +
+    `Gunakan !back atau !menu untuk keluar dari meja.\n\n` +
+    `${config.ui.line}`,
     [from, sender]
   );
 }
@@ -280,9 +263,10 @@ export async function handleInviteAccepted({ sock, msg, sender, reply, jid, send
 // SINGLEPLAYER
 // ============================
 
-async function playSingleplayer({ sender, bet, reply, sock, msg, jid }) {
+async function playSingleplayer({ sender, bet, reply }) {
   const deduction = await subtractBalance(sender, bet, "BET_REME");
   if (!deduction.success) {
+    gameStateManager.setFinished(sender);
     return reply(
       `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\n❌ Saldo tidak cukup!\n💰 Balance: ${config.currencySymbol}${deduction.balance}\n\n${config.ui.line}`
     );
@@ -293,8 +277,6 @@ async function playSingleplayer({ sender, bet, reply, sock, msg, jid }) {
   const won = Math.random() < 0.5;
   const payout = won ? bet * 2 : 0;
 
-  // Kirim animasi rolling sebagai reply biasa (tanpa edit)
-  // karena singleplayer pakai reply() yang sudah ada context
   await reply(
     `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\n` +
     `🎰 Rolling...\n\n⏳ ███░░░░░░░ 30%`
@@ -310,7 +292,9 @@ async function playSingleplayer({ sender, bet, reply, sock, msg, jid }) {
     : `💸 -${config.currencySymbol}${bet}`;
 
   const newBalance = await recordGameResult(sender, won, payout, "GAME_REME");
-  gameStateManager.clearPlayerState(sender);
+  
+  // Lock state to FINISHED
+  gameStateManager.setFinished(sender);
 
   return reply(
     `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\n` +
@@ -320,7 +304,8 @@ async function playSingleplayer({ sender, bet, reply, sock, msg, jid }) {
     `🤖 Bot: ${botNumber}\n\n` +
     `${moneyLine}\n\n` +
     `💵 Balance: ${config.currencySymbol}${newBalance}\n\n` +
-    `Main lagi: !g <bet>\nKeluar: !back\n\n${config.ui.line}`
+    `Gunakan !back atau !menu untuk keluar dari meja.\n\n` +
+    `${config.ui.line}`
   );
 }
 
@@ -331,6 +316,7 @@ async function playSingleplayer({ sender, bet, reply, sock, msg, jid }) {
 async function playMultiplayer({ sender, bet, reply, opponent }) {
   const opponentUser = getUser(opponent);
   if (!opponentUser) {
+    gameStateManager.setFinished(sender);
     return reply(
       `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\nOpponent tidak ditemukan.\n\n${config.ui.line}`
     );
@@ -338,6 +324,7 @@ async function playMultiplayer({ sender, bet, reply, opponent }) {
 
   const deduction1 = await subtractBalance(sender, bet, "BET_REME_MP");
   if (!deduction1.success) {
+    gameStateManager.setFinished(sender);
     return reply(
       `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\n❌ Saldo kamu tidak cukup!\n💰 Balance: ${config.currencySymbol}${deduction1.balance}\n\n${config.ui.line}`
     );
@@ -346,12 +333,12 @@ async function playMultiplayer({ sender, bet, reply, opponent }) {
   const deduction2 = await subtractBalance(opponent, bet, "BET_REME_MP");
   if (!deduction2.success) {
     await addBalance(sender, bet, "REFUND_REME_MP");
+    gameStateManager.setFinished(sender);
     return reply(
       `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\n❌ Saldo lawan tidak cukup!\n\n${config.ui.line}`
     );
   }
 
-  // Animasi rolling via reply
   await reply(
     `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\n` +
     `🎰 Rolling...\n⏳ ███░░░░░░░`
@@ -377,15 +364,17 @@ async function playMultiplayer({ sender, bet, reply, opponent }) {
     resultText = `😢💔\n\n❌ *KALAH!*\n\n🎲 Kamu: ${p1Number}\n🎲 @${oppNum}: ${p2Number}\n\n💸 -${config.currencySymbol}${bet}`;
   }
 
-  gameStateManager.clearPlayerState(sender);
-  // FIX: Removed duplicate recordGameResult call that was here before
+  gameStateManager.setFinished(sender);
+  gameStateManager.setFinished(opponent);
 
   const senderUser = getUser(sender);
   const newBalance = senderUser?.balance || 0;
 
   return reply(
     `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\n${resultText}\n\n` +
-    `💵 Balance: ${config.currencySymbol}${newBalance}\n\nMain lagi: !g <bet>\nKeluar: !back\n\n${config.ui.line}`,
+    `💵 Balance: ${config.currencySymbol}${newBalance}\n\n` +
+    `Gunakan !back atau !menu untuk keluar.\n\n` +
+    `${config.ui.line}`,
     [opponent]
   );
 }

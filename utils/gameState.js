@@ -88,7 +88,7 @@ class GameStateManager {
   /** Cek apakah player sedang dalam game (any active state) */
   isPlayerInGame(jid) {
     const state = this.playerStates.get(jid);
-    return !!(state && ["IN_GAME", "MODE_SELECT", "OPPONENT_SELECT", "WAITING_INVITE"].includes(state.state));
+    return !!(state && ["IN_GAME", "MODE_SELECT", "OPPONENT_SELECT", "WAITING_INVITE", "FINISHED"].includes(state.state));
   }
 
   isWaitingModeSelection(jid) {
@@ -113,6 +113,22 @@ class GameStateManager {
 
   removePlayer(jid) {
     this.playerStates.delete(jid);
+  }
+
+  setFinished(jid) {
+    const state = this.playerStates.get(jid);
+    if (state) {
+      state.state = "FINISHED";
+    } else {
+      this.playerStates.set(jid, {
+        state: "FINISHED",
+        game: null,
+        mode: null,
+        opponent: null,
+        data: {},
+        createdAt: Date.now()
+      });
+    }
   }
 
   /** Set mode setelah player pilih !1 atau !2 */

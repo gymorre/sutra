@@ -11,6 +11,7 @@ import {
 } from "../utils/economy.js";
 import { gameStateManager } from "../utils/gameState.js";
 import { config } from "../config.js";
+import { startChallengeCountdown } from "./multiplayer.js";
 
 export const name = "tictactoe";
 export const aliases = ["ttt"];
@@ -124,20 +125,19 @@ export async function execute({ sender, args, reply, jid }) {
   const betArg = args[0];
   const bet = betArg ? parseInt(betArg, 10) : null;
 
+  // Set state langsung ke IN_GAME dengan mode bot
+  gameStateManager.setPlayerInGame(sender, "tictactoe");
+  gameStateManager.setMode(sender, "bot");
+
   if (bet && bet > 0) {
-    gameStateManager.setModeSelection(sender, "tictactoe");
     gameStateManager.updateGameData(sender, { bet });
-    return reply(
-      `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n` +
-      `💰 Bet: ${config.currencySymbol}${bet}\n\nPilih mode:\n!1 = 🤖 Lawan BOT\n!2 = 👤 Lawan PLAYER\n\nKeluar: !back\n\n${config.ui.line}`
-    );
+    return startBotGame({ sender, bet, reply, jid });
   }
 
-  gameStateManager.setModeSelection(sender, "tictactoe");
   return reply(
-    `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n` +
+    `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE (SOLO vs BOT)\n${config.ui.line}\n\n` +
     `Game 3x3 klasik!\n\n` +
-    `Set bet:\n!bet <jumlah>\n\nLangsung main:\n!ttt <bet>\n\nMode:\n!1 = 🤖 BOT\n!2 = 👤 PLAYER\n\nKeluar: !back\n\n${config.ui.line}`
+    `Set bet untuk main:\n!bet <jumlah>\n\nLangsung main:\n!g <jumlah>\n\nKeluar: !back atau !menu\n\n${config.ui.line}`
   );
 }
 
@@ -241,27 +241,7 @@ export async function startMultiplayer({ sock, msg, sender, reply, jid, opponent
     );
   }
 
-  // Buat invite
-  const inviteId = gameStateManager.createInvite(sender, opponent, "tictactoe", bet, jid);
-
-  const senderUser = getUser(sender);
-  const senderNum = sender.split("@")[0];
-  const oppNum = opponent.split("@")[0];
-
-  await sendTo(
-    jid,
-    `@${oppNum}\n${config.ui.line}\n┃ ❌⭕ UNDANGAN TIC TAC TOE\n${config.ui.line}\n\n` +
-    `@${senderNum} mengajakmu bermain Tic Tac Toe!\n\n` +
-    `💰 Bet: ${config.currencySymbol}${bet} masing-masing\n\n` +
-    `Jawab:\n✅ !accept\n❌ !decline\n\n⏰ Berlaku 2 menit\n\n${config.ui.line}`,
-    [opponent, sender]
-  );
-
-  return reply(
-    `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE - MULTIPLAYER\n${config.ui.line}\n\n` +
-    `📨 Undangan dikirim ke @${oppNum}!\n\nMenunggu jawaban...\n\n${config.ui.line}`,
-    [opponent]
-  );
+  return startChallengeCountdown({ sock, jid, sender, opponentJid: opponent, gameCode: "tictactoe", bet, sendTo });
 }
 
 // ============================
@@ -443,11 +423,11 @@ async function handleMove({ sender, pos, reply, jid, sendTo, existing: game }) {
       await recordGameResult(game.player_x, false, 0, "GAME_TTT_DRAW");
       if (!isBot) await recordGameResult(game.player_o, false, 0, "GAME_TTT_DRAW");
 
-      gameStateManager.clearPlayerState(sender);
-      if (!isBot) gameStateManager.clearPlayerState(game.player_o);
+      gameStateManager.setFinished(sender);
+      if (!isBot) gameStateManager.setFinished(game.player_o);
 
       return reply(
-        `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n${renderBoard(board)}\n\n🤝 *SERI!*\nBet dikembalikan.\n\nMain lagi: !ttt <bet>\n\n${config.ui.line}`,
+        `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n${renderBoard(board)}\n\n🤝 *SERI!*\nBet dikembalikan.\n\nGunakan !back atau !menu untuk keluar dari meja.\n\n${config.ui.line}`,
         mentionsList
       );
     }
@@ -463,15 +443,15 @@ async function handleMove({ sender, pos, reply, jid, sendTo, existing: game }) {
     await recordGameResult(winnerJid, true, 0, "GAME_TTT_WIN");
     if (!isBot) await recordGameResult(loserJid, false, 0, "GAME_TTT_LOSE");
 
-    gameStateManager.clearPlayerState(sender);
-    if (!isBot && loserJid !== "BOT") gameStateManager.clearPlayerState(loserJid);
+    gameStateManager.setFinished(sender);
+    if (!isBot && loserJid !== "BOT") gameStateManager.setFinished(loserJid);
 
     const winnerNum = winnerJid?.split("@")[0];
 
     return reply(
       `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n${renderBoard(board)}\n\n` +
       `🎉 *${winnerUser?.nickname || "Pemenang"} MENANG!*\n` +
-      `💰 +${config.currencySymbol}${totalPot}\n\nMain lagi: !ttt <bet>\n\n${config.ui.line}`,
+      `💰 +${config.currencySymbol}${totalPot}\n\nGunakan !back atau !menu untuk keluar dari meja.\n\n${config.ui.line}`,
       mentionsList
     );
   }

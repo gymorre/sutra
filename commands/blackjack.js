@@ -108,22 +108,20 @@ export async function execute({ sender, args, reply }) {
   const betArg = args[0];
   const bet = betArg ? parseInt(betArg, 10) : null;
 
+  // Set state langsung ke IN_GAME dengan mode bot
+  gameStateManager.setPlayerInGame(sender, "bj");
+  gameStateManager.setMode(sender, "bot");
+
   if (bet && bet > 0) {
-    gameStateManager.setModeSelection(sender, "bj");
     gameStateManager.updateGameData(sender, { bet });
-    return reply(
-      `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\n` +
-      `💰 Bet: ${config.currencySymbol}${bet}\n\n` +
-      `Pilih mode:\n!1 = 🤖 Lawan BOT\n\n` +
-      `(Blackjack hanya bisa vs Bot)\n\nKeluar: !back\n\n${config.ui.line}`
-    );
+    return startGame({ sender, bet, reply });
   }
 
-  gameStateManager.setModeSelection(sender, "bj");
   return reply(
-    `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\n` +
+    `${config.ui.line}\n┃ 🃏 BLACKJACK (SOLO vs BOT)\n${config.ui.line}\n\n` +
     `Blackjack standar! Hit/Stand/Bust.\nNatural Blackjack bayar 3:2!\n\n` +
-    `Set bet:\n!bet <jumlah>\n\nLangsung main:\n!g <jumlah>\n\nHanya mode BOT tersedia.\n!1 → mulai\n\nKeluar: !back\n\n${config.ui.line}`
+    `Set bet untuk main:\n!bet <jumlah>\n\natau langsung main:\n!g <jumlah>\n\n` +
+    `Keluar: !back atau !menu\n\n${config.ui.line}`
   );
 }
 
@@ -137,13 +135,13 @@ export async function playWithMode({ sender, args, reply, mode }) {
 
   if (!bet || isNaN(bet) || bet <= 0) {
     return reply(
-      `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\nSet bet dulu!\n\nGunakan: !bet <jumlah>\n\nContoh: !bet 500\n\n${config.ui.line}`
+      `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\nSet bet dulu!\n\nGunakan: !bet <jumlah>\n\n${config.ui.line}`
     );
   }
 
   if (mode === "multiplayer") {
     return reply(
-      `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\nBlackjack hanya bisa dimainkan vs Bot.\n\nGunakan !1 untuk mulai.\n\n${config.ui.line}`
+      `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\nBlackjack hanya bisa dimainkan vs Bot.\n\n${config.ui.line}`
     );
   }
 
@@ -265,7 +263,7 @@ async function startGame({ sender, bet, reply }) {
     }
 
     const newBalance = await recordGameResult(sender, won, payout, "GAME_BLACKJACK");
-    gameStateManager.clearPlayerState(sender);
+    gameStateManager.setFinished(sender);
 
     return reply(
       `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\n` +
@@ -325,7 +323,7 @@ async function handleAction(sender, action, reply) {
 
     if (playerValue > 21) {
       deleteGame(sender);
-      gameStateManager.clearPlayerState(sender);
+      gameStateManager.setFinished(sender);
       const newBalance = await recordGameResult(sender, false, 0, "GAME_BLACKJACK");
       return reply(
         `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\n` +
@@ -392,7 +390,7 @@ async function handleAction(sender, action, reply) {
   }
 
   deleteGame(sender);
-  gameStateManager.clearPlayerState(sender);
+  gameStateManager.setFinished(sender);
 
   let resultText, payout, won;
   let resultEmoji;

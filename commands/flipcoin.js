@@ -21,21 +21,22 @@ export async function execute({ sender, args, reply }) {
   const betArg = args[0];
   const bet = betArg && !isNaN(parseInt(betArg)) ? parseInt(betArg, 10) : null;
 
+  // Set state langsung ke IN_GAME dengan mode bot
+  gameStateManager.setPlayerInGame(sender, "flipcoin");
+  gameStateManager.setMode(sender, "bot");
+
   if (bet && bet > 0) {
-    gameStateManager.setModeSelection(sender, "flipcoin");
     gameStateManager.updateGameData(sender, { bet });
     return reply(
-      `${config.ui.line}\n┃ 🪙 FLIPCOIN\n${config.ui.line}\n\n` +
-      `💰 Bet: ${config.currencySymbol}${bet}\n\nPilih mode:\n!1 = 🤖 Lawan BOT\n!2 = 👤 Lawan PLAYER\n\nKeluar: !back\n\n${config.ui.line}`
+      `${config.ui.line}\n┃ 🪙 FLIPCOIN (SOLO vs BOT)\n${config.ui.line}\n\n` +
+      `💰 Bet: ${config.currencySymbol}${bet}\n\nPilih sisi koin:\nhead\ntail\n\nKeluar: !back\n\n${config.ui.line}`
     );
   }
 
-  gameStateManager.setModeSelection(sender, "flipcoin");
   return reply(
-    `${config.ui.line}\n┃ 🪙 FLIPCOIN\n${config.ui.line}\n\n` +
-    `Tebak hasil lemparan koin!\n\n🪙 HEAD atau TAIL?\n\n` +
-    `Set bet:\n!bet <jumlah>\n\nLangsung main:\n!g <bet> head\natau\n!g <bet> tail\n\n` +
-    `Pilih mode:\n!1 = 🤖 BOT\n!2 = 👤 PLAYER\n\nKeluar: !back\n\n${config.ui.line}`
+    `${config.ui.line}\n┃ 🪙 FLIPCOIN (SOLO vs BOT)\n${config.ui.line}\n\n` +
+    `Tebak hasil lemparan koin!\n\n🪙 Sisi: HEAD atau TAIL?\n\n` +
+    `Set bet untuk main:\n!bet <jumlah>\n\nLangsung main:\n!g <jumlah> head\natau\n!g <jumlah> tail\n\nKeluar: !back atau !menu\n\n${config.ui.line}`
   );
 }
 
@@ -49,26 +50,21 @@ export async function playWithMode({ sender, args, reply, mode }) {
 
   if (!bet || isNaN(bet) || bet <= 0) {
     return reply(
-      `${config.ui.line}\n┃ 🪙 FLIPCOIN\n${config.ui.line}\n\nSet bet dulu!\n\nGunakan: !bet <jumlah>\n\nContoh: !bet 200\n\n${config.ui.line}`
+      `${config.ui.line}\n┃ 🪙 FLIPCOIN\n${config.ui.line}\n\nSet bet dulu!\n\nGunakan: !bet <jumlah>\n\n${config.ui.line}`
     );
   }
 
-  if (mode === "bot") {
-    gameStateManager.setMode(sender, "bot");
-    gameStateManager.updateGameData(sender, { bet });
+  if (mode === "multiplayer") {
     return reply(
-      `${config.ui.line}\n┃ 🪙 FLIPCOIN\n${config.ui.line}\n\n` +
-      `💰 Bet: ${config.currencySymbol}${bet}\n\nPilih sisi koin:\n!g head\n!g tail\n\nKeluar: !back\n\n${config.ui.line}`
+      `${config.ui.line}\n┃ 🪙 FLIPCOIN\n${config.ui.line}\n\nFlipcoin hanya bisa dimainkan vs Bot.\n\n${config.ui.line}`
     );
   }
 
-  // Multiplayer
-  gameStateManager.setMultiplayerMode(sender, "flipcoin", null);
+  gameStateManager.setMode(sender, "bot");
   gameStateManager.updateGameData(sender, { bet });
-
   return reply(
-    `${config.ui.line}\n┃ 🪙 FLIPCOIN - MULTIPLAYER\n${config.ui.line}\n\n` +
-    `💰 Bet: ${config.currencySymbol}${bet}\n\nTag lawanmu:\n!tag @lawan\n\n${config.ui.line}`
+    `${config.ui.line}\n┃ 🪙 FLIPCOIN\n${config.ui.line}\n\n` +
+    `💰 Bet: ${config.currencySymbol}${bet}\n\nPilih sisi koin:\nhead\ntail\n\nKeluar: !back\n\n${config.ui.line}`
   );
 }
 
@@ -296,7 +292,7 @@ async function playSingleplayer({ sender, bet, choice, reply }) {
     : `💸 -${config.currencySymbol}${bet}`;
 
   const newBalance = await recordGameResult(sender, won, payout, "GAME_FLIPCOIN");
-  gameStateManager.clearPlayerState(sender);
+  gameStateManager.setFinished(sender);
 
   return reply(
     `${config.ui.line}\n┃ 🪙 FLIPCOIN\n${config.ui.line}\n\n` +
@@ -308,7 +304,7 @@ async function playSingleplayer({ sender, bet, choice, reply }) {
     `🪙 Hasil: ${result.toUpperCase()}\n\n` +
     `${moneyLine}\n` +
     `💵 Balance: ${config.currencySymbol}${newBalance}\n\n` +
-    `Main lagi: !g <bet> head/tail\nKeluar: !back\n\n${config.ui.line}`
+    `Gunakan !back atau !menu untuk keluar.\n\n${config.ui.line}`
   );
 }
 
@@ -386,11 +382,12 @@ async function playMultiplayer({ sender, bet, choice, reply, opponent }) {
       `🤝 SERI! Bet dikembalikan.`;
   }
 
-  gameStateManager.clearPlayerState(sender);
-  gameStateManager.clearPlayerState(opponent);
+  gameStateManager.setFinished(sender);
+  gameStateManager.setFinished(opponent);
 
   return reply(
-    `${config.ui.line}\n┃ 🪙 FLIPCOIN\n${config.ui.line}\n\n${resultText}\n\n${config.ui.line}`,
+    `${config.ui.line}\n┃ 🪙 FLIPCOIN\n${config.ui.line}\n\n${resultText}\n\n` +
+    `Gunakan !back atau !menu untuk keluar.\n\n${config.ui.line}`,
     [opponent]
   );
 }

@@ -26,6 +26,8 @@ import idx from "../commands/idx.js";
 import dv from "../commands/dv.js";
 import support from "../commands/support.js";
 import invitebot from "../commands/invitebot.js";
+import transfer from "../commands/transfer.js";
+import multiplayer from "../commands/multiplayer.js";
 
 // ============================
 // REGISTRY
@@ -60,7 +62,7 @@ function registerGame(cmd) {
   menu, game, register,
   balance, cek, leaderboard,
   kurs, deposit, withdraw, idx, dv,
-  support, invitebot
+  support, invitebot, transfer, multiplayer
 ].forEach(registerCommand);
 
 // Daftarkan game commands
@@ -88,6 +90,9 @@ const OPPONENT_SELECT_ALLOWED = new Set(["back", "home", "menu", "tag"]);
 /** Command yang diizinkan saat WAITING_INVITE */
 const WAITING_INVITE_ALLOWED = new Set(["back", "home", "menu"]);
 
+/** Command yang diizinkan saat FINISHED */
+const FINISHED_ALLOWED = new Set(["back", "home", "menu"]);
+
 // ============================
 // HELPER: PESAN LOCKED
 // ============================
@@ -101,7 +106,8 @@ function getLockedMessage(state, game) {
     WAITING_INVITE: `Menunggu lawan menjawab...\n\nBatalkan: !back`,
     IN_GAME:
       `Sedang bermain ${gameName}!\n\nCommand tersedia:\n` +
-      `!g <aksi/angka> → main\n!bet <jumlah> → set bet\n!cash → cairkan (fruitbomb)\n\nKeluar: !back`
+      `!g <aksi/angka> → main\n!bet <jumlah> → set bet\n!cash → cairkan (fruitbomb)\n\nKeluar: !back`,
+    FINISHED: `Pertandingan telah selesai!\n\nGunakan !back atau !menu untuk keluar dari meja sebelum bermain game lain atau menggunakan fitur lain.\n\nKeluar: !back`
   };
 
   return (
@@ -223,6 +229,8 @@ export async function executeCommand(ctx) {
       allowed = OPPONENT_SELECT_ALLOWED;
     } else if (state === "WAITING_INVITE") {
       allowed = WAITING_INVITE_ALLOWED;
+    } else if (state === "FINISHED") {
+      allowed = FINISHED_ALLOWED;
     } else if (state === "IN_GAME") {
       allowed = IN_GAME_ALLOWED;
       // Izinkan angka 1-9 untuk TicTacToe dan FruitBomb
@@ -254,10 +262,13 @@ export async function executeCommand(ctx) {
   // ============================
   if (command === "tag" && playerState?.state === "OPPONENT_SELECT") {
     const mentioned = ctx.msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
+    const quoted = ctx.msg.message?.extendedTextMessage?.contextInfo?.participant;
     let opponent = null;
 
     if (mentioned && mentioned.length > 0) {
       opponent = mentioned[0];
+    } else if (quoted) {
+      opponent = quoted;
     } else if (args.length > 0) {
       opponent = args.join(" ");
     }

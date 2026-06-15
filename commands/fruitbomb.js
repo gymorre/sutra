@@ -151,25 +151,22 @@ export async function execute({ sender, args, reply }) {
   const betArg = args?.[0];
   const bet = betArg && !isNaN(parseInt(betArg)) ? parseInt(betArg, 10) : null;
 
+  // Set state langsung ke IN_GAME dengan mode bot
+  gameStateManager.setPlayerInGame(sender, "fb");
+  gameStateManager.setMode(sender, "bot");
+
   if (bet && bet > 0) {
-    gameStateManager.setModeSelection(sender, "fb");
     gameStateManager.updateGameData(sender, { bet });
-    return reply(
-      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
-      `💰 Bet: ${config.currencySymbol}${bet}\n\nPilih mode:\n!1 = 🤖 Lawan BOT\n!2 = 👤 Lawan PLAYER\n\nKeluar: !back\n\n${config.ui.line}`
-    );
+    return startBotGame({ sender, bet, reply });
   }
 
-  gameStateManager.setModeSelection(sender, "fb");
-  // Tampilkan info game
   return reply(
-    `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+    `${config.ui.line}\n┃ 🍎 FRUIT BOMB (SOLO vs BOT)\n${config.ui.line}\n\n` +
     `Grid 3x3 berisi 6 🍎 buah dan 3 💣 bom tersembunyi.\n\n` +
     `• Pilih kotak 1-9\n• Kena 🍎 = multiplier naik!\n• Kena 💣 = KALAH!\n• Cairkan kapan saja dengan !cash\n\n` +
     `📈 Multiplier:\n` +
     `1 buah = 1.3x\n2 buah = 1.7x\n3 buah = 2.2x\n4 buah = 3.0x\n5 buah = 5.0x\n6 buah = 10x 🎉\n\n` +
-    `Cara mulai:\n!fb <bet>\n\nContoh:\n!fb 500\n\n` +
-    `${config.ui.line}`
+    `Set bet untuk main:\n!bet <jumlah>\n\nLangsung main:\n!g <jumlah>\n\nKeluar: !back atau !menu\n\n${config.ui.line}`
   );
 }
 
@@ -183,23 +180,18 @@ export async function playWithMode({ sender, args, reply, mode }) {
 
   if (!bet || isNaN(bet) || bet <= 0) {
     return reply(
-      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\nSet bet dulu!\n\nGunakan: !bet <jumlah>\n\nContoh: !bet 500\n\n${config.ui.line}`
+      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\nSet bet dulu!\n\nGunakan: !bet <jumlah>\n\n${config.ui.line}`
     );
   }
 
-  if (mode === "bot") {
-    gameStateManager.setMode(sender, "bot");
-    return startBotGame({ sender, bet, reply });
+  if (mode === "multiplayer") {
+    return reply(
+      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\nFruitbomb hanya bisa dimainkan vs Bot.\n\n${config.ui.line}`
+    );
   }
 
-  // Multiplayer mode - minta tag opponent
-  gameStateManager.setMultiplayerMode(sender, "fb", null);
-  gameStateManager.updateGameData(sender, { bet });
-  return reply(
-    `${config.ui.line}\n┃ 🍎 FRUIT BOMB - MULTIPLAYER\n${config.ui.line}\n\n` +
-    `💰 Bet: ${config.currencySymbol}${bet}\n\n` +
-    `Tag lawanmu:\n!tag @lawan\n\n${config.ui.line}`
-  );
+  gameStateManager.setMode(sender, "bot");
+  return startBotGame({ sender, bet, reply });
 }
 
 // ============================
@@ -498,11 +490,11 @@ async function handleMove({ sender, pos, reply, jid, sendTo, sock, msg }) {
 
     // KALAH - reveal semua
     deleteGame(boardOwnerJid);
-    gameStateManager.clearPlayerState(boardOwnerJid);
+    gameStateManager.setFinished(boardOwnerJid);
 
     if (game.mode === "multiplayer") {
       const opponent = game.opponent;
-      gameStateManager.clearPlayerState(opponent);
+      gameStateManager.setFinished(opponent);
       
       const winnerJid = sender === boardOwnerJid ? opponent : boardOwnerJid;
       const loserJid = sender;
@@ -546,11 +538,11 @@ async function handleMove({ sender, pos, reply, jid, sendTo, sock, msg }) {
   // Semua buah ditemukan = jackpot
   if (newFruits >= TOTAL_CELLS - BOMB_COUNT) {
     deleteGame(boardOwnerJid);
-    gameStateManager.clearPlayerState(boardOwnerJid);
+    gameStateManager.setFinished(boardOwnerJid);
 
     if (game.mode === "multiplayer") {
       const opponent = game.opponent;
-      gameStateManager.clearPlayerState(opponent);
+      gameStateManager.setFinished(opponent);
       
       const winnerJid = sender;
       const loserJid = sender === boardOwnerJid ? opponent : boardOwnerJid;
@@ -647,7 +639,7 @@ async function handleCashOut({ sender, reply }) {
   const payout = Math.floor(game.bet * mult);
 
   deleteGame(sender);
-  gameStateManager.clearPlayerState(sender);
+  gameStateManager.setFinished(sender);
 
   const newBalance = await recordGameResult(sender, true, payout, "GAME_FB_CASHOUT");
   await addBalance(sender, payout, "WIN_FB_CASHOUT");

@@ -2,19 +2,29 @@
 
 import { config } from "../config.js";
 
-export const name = "invitebot";
-export const aliases = [];
+export const name = "invite";
+export const aliases = ["invitebot"];
 export const requiresRegistration = false;
 
-export async function execute({ reply }) {
+export async function execute({ sock, reply }) {
+  const botNumber = sock.user?.id ? sock.user.id.split(":")[0] : config.ownerNumber;
+  const inviteLink = `https://wa.me/${botNumber}?text=!menu`;
+
   const text = `${config.ui.line}
-┃ INVITE BOT
+┃ 👥 INVITE SUTRA BOT
 ${config.ui.line}
 
-Ajak teman kamu bermain ${config.botName}!
+Ajak SUTRA BOT masuk ke grup chat kamu untuk seru-seruan bareng teman-teman! 🎉
 
-🔗 ${config.inviteLink}
+🔥 **Fitur Unggulan:**
+• 🎲 Mini-games seru (Reme, Blackjack, Flipcoin, Fruitbomb, TicTacToe)
+• ⚔️ Battle multiplayer taruhan saldo dengan teman
+• 💵 Virtual economy dengan transfer saldo, leaderboard harian, dan hadiah bonus!
 
+Klik link di bawah ini untuk mulai interaksi dan mengundang bot:
+🔗 ${inviteLink}
+
+*Bikin grup kamu makin rame dan seru dengan SUTRA BOT!* 🚀
 ${config.ui.line}`;
 
   return reply(text);

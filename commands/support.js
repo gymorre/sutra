@@ -8,15 +8,15 @@ export const requiresRegistration = false;
 
 export async function execute({ reply }) {
   const text = `${config.ui.line}
-┃ SUPPORT
+┃ 📞 SUPPORT CENTER
 ${config.ui.line}
 
-Butuh bantuan?
+Butuh bantuan atau menemukan bug?
+Silakan hubungi team support kami melalui WhatsApp utama:
 
-Hubungi owner:
-👤 ${config.ownerName}
-📞 wa.me/${config.ownerNumber}
+🔗 https://wa.me/6285158220582
 
+Kami akan segera merespons laporan Anda! Terima kasih. :D
 ${config.ui.line}`;
 
   return reply(text);
