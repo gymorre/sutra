@@ -6,6 +6,7 @@ import { db } from "../utils/database.js";
 import { subtractBalance, recordGameResult, addBalance, getUser } from "../utils/economy.js";
 import { gameStateManager } from "../utils/gameState.js";
 import { config } from "../config.js";
+import { sleep } from "../utils/animation.js";
 
 export const name = "bj";
 export const aliases = ["blackjack"];
@@ -47,6 +48,19 @@ function formatHand(hand) {
   return hand.join(" ");
 }
 
+/** Render kartu dengan box art */
+function renderCard(card) {
+  return `┌───┐\n│ ${card.padEnd(3)}│\n└───┘`;
+}
+
+/** Render hand dengan visual kartu emoji */
+function renderHandVisual(hand, hideSecond = false) {
+  if (hideSecond && hand.length >= 2) {
+    return `[ ${hand[0]} ] [ ❓ ]`;
+  }
+  return hand.map(c => `[ ${c} ]`).join(" ");
+}
+
 function getGame(jid) {
   return db.prepare("SELECT * FROM blackjack_games WHERE jid = ?").get(jid);
 }
@@ -80,11 +94,12 @@ export async function execute({ sender, args, reply }) {
   if (existing) {
     const playerHand = JSON.parse(existing.player_hand);
     const dealerHand = JSON.parse(existing.dealer_hand);
+    const pv = handValue(playerHand);
     return reply(
       `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\n` +
       `Game aktif!\n\n` +
-      `🎴 Tangan: ${formatHand(playerHand)} (${handValue(playerHand)})\n` +
-      `🎴 Dealer: ${dealerHand[0]} ❓\n\n` +
+      `🎴 Kamu: ${renderHandVisual(playerHand)} → *${pv}*\n` +
+      `🤖 Dealer: ${renderHandVisual(dealerHand, true)}\n\n` +
       `!g hit  → ambil kartu\n!g stand → berhenti\n\n` +
       `Keluar: !back\n\n${config.ui.line}`
     );
@@ -168,10 +183,11 @@ export async function handleGameCommand({ sender, args, reply, command }) {
       // Tidak ada sub command tapi ada game aktif
       const playerHand = JSON.parse(existing.player_hand);
       const dealerHand = JSON.parse(existing.dealer_hand);
+      const pv = handValue(playerHand);
       return reply(
         `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\n` +
-        `🎴 Tangan: ${formatHand(playerHand)} (${handValue(playerHand)})\n` +
-        `🎴 Dealer: ${dealerHand[0]} ❓\n\n` +
+        `🎴 Kamu: ${renderHandVisual(playerHand)} → *${pv}*\n` +
+        `🤖 Dealer: ${renderHandVisual(dealerHand, true)}\n\n` +
         `!g hit  → ambil kartu\n!g stand → berhenti\n\n${config.ui.line}`
       );
     }
@@ -210,6 +226,23 @@ async function startGame({ sender, bet, reply }) {
   const playerValue = handValue(playerHand);
   const dealerValue = handValue(dealerHand);
 
+  // === ANIMASI DEALING ===
+  await reply(
+    `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\n` +
+    `🃏 Mengocok kartu...\n\n` +
+    `🎴🎴🎴🎴🎴\n` +
+    `     shuffle...`
+  );
+  await sleep(1000);
+
+  await reply(
+    `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\n` +
+    `✨ Membagikan kartu...\n\n` +
+    `🎴 → 👤 Kamu\n` +
+    `🎴 → 🤖 Dealer`
+  );
+  await sleep(800);
+
   // Natural blackjack check
   const playerBJ = playerValue === 21;
   const dealerBJ = dealerValue === 21;
@@ -220,15 +253,15 @@ async function startGame({ sender, bet, reply }) {
     if (playerBJ && dealerBJ) {
       payout = bet;
       won = false;
-      resultText = `🤝 *PUSH (SERI)*\n\nKamu Blackjack, Dealer juga Blackjack.\nBet dikembalikan.`;
+      resultText = `🤝 *PUSH (SERI)*\n\nDua-duanya Blackjack!\nBet dikembalikan.`;
     } else if (playerBJ) {
       payout = Math.floor(bet * 2.5);
       won = true;
-      resultText = `🎉 *NATURAL BLACKJACK!*\n\n💰 Payout 3:2 → +${config.currencySymbol}${payout}`;
+      resultText = `🎊🎉🎊\n\n🃏 *NATURAL BLACKJACK!*\n\n💰 Payout 3:2 → +${config.currencySymbol}${payout}`;
     } else {
       payout = 0;
       won = false;
-      resultText = `❌ *KALAH!*\n\nDealer Blackjack.\n💸 -${config.currencySymbol}${bet}`;
+      resultText = `😢💔\n\n❌ *KALAH!*\n\nDealer Blackjack!\n💸 -${config.currencySymbol}${bet}`;
     }
 
     const newBalance = await recordGameResult(sender, won, payout, "GAME_BLACKJACK");
@@ -236,8 +269,8 @@ async function startGame({ sender, bet, reply }) {
 
     return reply(
       `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\n` +
-      `🎴 Kamu: ${formatHand(playerHand)} (${playerValue})\n` +
-      `🎴 Dealer: ${formatHand(dealerHand)} (${dealerValue})\n\n` +
+      `🎴 Kamu: ${renderHandVisual(playerHand)} → *${playerValue}*\n` +
+      `🤖 Dealer: ${renderHandVisual(dealerHand)} → *${dealerValue}*\n\n` +
       `${resultText}\n\n💵 Balance: ${config.currencySymbol}${newBalance}\n\n` +
       `Main lagi: !g <bet>\nKeluar: !back\n\n${config.ui.line}`
     );
@@ -249,9 +282,13 @@ async function startGame({ sender, bet, reply }) {
   return reply(
     `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\n` +
     `💰 Bet: ${config.currencySymbol}${bet}\n\n` +
-    `🎴 Tangan: ${formatHand(playerHand)} (${playerValue})\n` +
-    `🎴 Dealer: ${dealerHand[0]} ❓\n\n` +
-    `!g hit  → ambil kartu\n!g stand → berhenti\n\nKeluar: !back\n\n${config.ui.line}`
+    `🎴 Kamu: ${renderHandVisual(playerHand)} → *${playerValue}*\n` +
+    `🤖 Dealer: ${renderHandVisual(dealerHand, true)}\n\n` +
+    `┌─────────────────┐\n` +
+    `│ !g hit  → 🎴 Tarik │\n` +
+    `│ !g stand → ✋ Stop  │\n` +
+    `└─────────────────┘\n\n` +
+    `Keluar: !back\n\n${config.ui.line}`
   );
 }
 
@@ -274,8 +311,17 @@ async function handleAction(sender, action, reply) {
   const bet = game.bet;
 
   if (action === "hit") {
+    // === ANIMASI HIT ===
+    await reply(
+      `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\n` +
+      `🎴 Mengambil kartu dari deck...\n\n` +
+      `📦 → 🎴 → ???`
+    );
+    await sleep(700);
+
     playerHand.push(deck.pop());
     const playerValue = handValue(playerHand);
+    const newCard = playerHand[playerHand.length - 1];
 
     if (playerValue > 21) {
       deleteGame(sender);
@@ -283,59 +329,102 @@ async function handleAction(sender, action, reply) {
       const newBalance = await recordGameResult(sender, false, 0, "GAME_BLACKJACK");
       return reply(
         `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\n` +
-        `🎴 Tangan: ${formatHand(playerHand)} (${playerValue})\n\n` +
-        `💥 *BUST!* Melebihi 21!\n💸 -${config.currencySymbol}${bet}\n\n` +
-        `💵 Balance: ${config.currencySymbol}${newBalance}\n\nMain lagi: !g <bet>\nKeluar: !back\n\n${config.ui.line}`
+        `🎴 Kartu baru: [ ${newCard} ]\n\n` +
+        `🎴 Kamu: ${renderHandVisual(playerHand)} → *${playerValue}*\n\n` +
+        `💥💥💥 *BUST!* 💥💥💥\n` +
+        `Melebihi 21!\n\n` +
+        `💸 -${config.currencySymbol}${bet}\n` +
+        `💵 Balance: ${config.currencySymbol}${newBalance}\n\n` +
+        `Main lagi: !g <bet>\nKeluar: !back\n\n${config.ui.line}`
       );
     }
 
     saveGame(sender, bet, playerHand, dealerHand, deck, "ongoing");
+
+    // Pesan tambahan jika mendekati 21
+    let hint = "";
+    if (playerValue === 21) {
+      hint = "\n\n🎯 *PERFECT 21!* Mau stand?\n";
+    } else if (playerValue >= 17) {
+      hint = "\n\n⚠️ Hati-hati! Nilaimu sudah tinggi.\n";
+    }
+
     return reply(
       `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\n` +
-      `🎴 Tangan: ${formatHand(playerHand)} (${playerValue})\n` +
-      `🎴 Dealer: ${dealerHand[0]} ❓\n\n` +
-      `!g hit  → ambil kartu\n!g stand → berhenti\n\n${config.ui.line}`
+      `🎴 Kartu baru: [ ${newCard} ]\n\n` +
+      `🎴 Kamu: ${renderHandVisual(playerHand)} → *${playerValue}*\n` +
+      `🤖 Dealer: ${renderHandVisual(dealerHand, true)}\n` +
+      `${hint}\n` +
+      `!g hit  → 🎴 Tarik lagi\n!g stand → ✋ Stop\n\n${config.ui.line}`
     );
   }
 
-  // === STAND ===
+  // === STAND - ANIMASI DEALER REVEAL ===
   let playerValue = handValue(playerHand);
   let dealerValue = handValue(dealerHand);
+
+  await reply(
+    `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\n` +
+    `✋ STAND! Nilaimu: *${playerValue}*\n\n` +
+    `🤖 Dealer membuka kartu...\n` +
+    `❓ → ???`
+  );
+  await sleep(1000);
+
+  // Dealer reveal
+  await reply(
+    `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\n` +
+    `🤖 Dealer: ${renderHandVisual(dealerHand)} → *${dealerValue}*\n\n` +
+    `${dealerValue < 17 ? "🤖 Dealer harus tarik lagi..." : "🤖 Dealer stand."}`
+  );
+  await sleep(800);
 
   while (dealerValue < 17) {
     dealerHand.push(deck.pop());
     dealerValue = handValue(dealerHand);
+
+    await reply(
+      `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\n` +
+      `🤖 Dealer tarik: [ ${dealerHand[dealerHand.length - 1]} ]\n\n` +
+      `🤖 Dealer: ${renderHandVisual(dealerHand)} → *${dealerValue}*`
+    );
+    await sleep(700);
   }
 
   deleteGame(sender);
   gameStateManager.clearPlayerState(sender);
 
   let resultText, payout, won;
+  let resultEmoji;
 
   if (dealerValue > 21) {
     payout = bet * 2;
     won = true;
-    resultText = `🎉 *DEALER BUST!*\n\n💰 +${config.currencySymbol}${payout}`;
+    resultEmoji = "🎊🎉🎊";
+    resultText = `${resultEmoji}\n\n🎉 *DEALER BUST!*\nDealer melebihi 21!\n\n💰 +${config.currencySymbol}${payout}`;
   } else if (playerValue > dealerValue) {
     payout = bet * 2;
     won = true;
-    resultText = `✅ *MENANG!*\n\n💰 +${config.currencySymbol}${payout}`;
+    resultEmoji = "🎊🎉🎊";
+    resultText = `${resultEmoji}\n\n✅ *MENANG!*\n${playerValue} > ${dealerValue}\n\n💰 +${config.currencySymbol}${payout}`;
   } else if (playerValue === dealerValue) {
     payout = bet;
     won = false;
-    resultText = `🤝 *PUSH (SERI)*\n\nBet dikembalikan.`;
+    resultEmoji = "🤝";
+    resultText = `${resultEmoji}\n\n*PUSH (SERI)*\n${playerValue} = ${dealerValue}\n\nBet dikembalikan.`;
   } else {
     payout = 0;
     won = false;
-    resultText = `❌ *KALAH!*\n\n💸 -${config.currencySymbol}${bet}`;
+    resultEmoji = "😢💔";
+    resultText = `${resultEmoji}\n\n❌ *KALAH!*\n${playerValue} < ${dealerValue}\n\n💸 -${config.currencySymbol}${bet}`;
   }
 
   const newBalance = await recordGameResult(sender, won, payout, "GAME_BLACKJACK");
 
   return reply(
-    `${config.ui.line}\n┃ 🃏 BLACKJACK\n${config.ui.line}\n\n` +
-    `🎴 Kamu: ${formatHand(playerHand)} (${playerValue})\n` +
-    `🎴 Dealer: ${formatHand(dealerHand)} (${dealerValue})\n\n` +
+    `${config.ui.line}\n┃ 🃏 HASIL BLACKJACK\n${config.ui.line}\n\n` +
+    `🎴 Kamu: ${renderHandVisual(playerHand)} → *${playerValue}*\n` +
+    `🤖 Dealer: ${renderHandVisual(dealerHand)} → *${dealerValue}*\n\n` +
     `${resultText}\n\n💵 Balance: ${config.currencySymbol}${newBalance}\n\n` +
     `Main lagi: !g <bet>\nKeluar: !back\n\n${config.ui.line}`
   );

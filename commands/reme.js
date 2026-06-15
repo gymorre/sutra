@@ -4,7 +4,7 @@
 
 import { subtractBalance, recordGameResult, addBalance, getUser, getUserByNickname } from "../utils/economy.js";
 import { randomInt } from "../utils/random.js";
-import { animateMessage } from "../utils/animation.js";
+import { animateMessage, remeRollingFrames, multiplayerStartFrames, sleep } from "../utils/animation.js";
 import { gameStateManager } from "../utils/gameState.js";
 import { config } from "../config.js";
 
@@ -214,19 +214,28 @@ export async function handleInviteAccepted({ sock, msg, sender, reply, jid, send
     );
   }
 
-  // Langsung main
   const fromNum = from.split("@")[0];
   const toNum = sender.split("@")[0];
 
-  await sendTo(
-    jid,
-    `@${fromNum} @${toNum}\n${config.ui.line}\n┃ 🎲 REME MULTIPLAYER DIMULAI!\n${config.ui.line}\n\n` +
-    `👤 Player 1: @${fromNum}\n👤 Player 2: @${toNum}\n\n` +
-    `💰 Bet: ${config.currencySymbol}${bet} masing-masing\n\nRolling...\n\n${config.ui.line}`,
-    [from, sender]
-  );
+  // === ANIMASI MULTIPLAYER START ===
+  const header = `${config.ui.line}\n┃ 🎲 REME MULTIPLAYER\n${config.ui.line}`;
+  const startInfo = `👤 @${fromNum} vs 👤 @${toNum}\n💰 Bet: ${config.currencySymbol}${bet} masing-masing`;
+  
+  const startFrames = [
+    `${header}\n\n${startInfo}\n\n⚔️ Mempersiapkan arena...\n\n3️⃣`,
+    `${header}\n\n${startInfo}\n\n⚔️ Bersiap...\n\n2️⃣`,
+    `${header}\n\n${startInfo}\n\n⚔️ MULAI!\n\n1️⃣ 🎲`,
+  ];
 
-  await new Promise(r => setTimeout(r, 1200));
+  await animateMessage(sock, jid, startFrames, 800, msg);
+  await sleep(600);
+
+  // === ANIMASI ROLLING ===
+  const rollingFrames = remeRollingFrames(header, "");
+  // Hanya tampilkan frame rolling tanpa final (kita kirim final terpisah)
+  const rollSent = await animateMessage(sock, jid, rollingFrames.slice(0, 5), 600);
+
+  await sleep(400);
 
   const p1Number = randomInt(0, 36);
   const p2Number = randomInt(0, 36);
@@ -238,18 +247,22 @@ export async function handleInviteAccepted({ sock, msg, sender, reply, jid, send
     await recordGameResult(sender, true, 0, "GAME_REME_MP");
     await recordGameResult(from, false, 0, "GAME_REME_MP");
     resultText =
-      `🎲 Player 1 (@${fromNum}): ${p1Number}\n` +
-      `🎲 Player 2 (@${toNum}): ${p2Number}\n\n` +
-      `🏆 @${toNum} MENANG!\n💰 +${config.currencySymbol}${bet * 2}\n\n` +
+      `🎲 @${fromNum}: ${p1Number}\n` +
+      `🎲 @${toNum}: ${p2Number}\n\n` +
+      `🎊🎉🎊\n` +
+      `🏆 @${toNum} MENANG!\n` +
+      `💰 +${config.currencySymbol}${bet * 2}\n\n` +
       `💸 @${fromNum} kalah -${config.currencySymbol}${bet}`;
   } else {
     await addBalance(from, bet * 2, "WIN_REME_MP");
     await recordGameResult(from, true, 0, "GAME_REME_MP");
     await recordGameResult(sender, false, 0, "GAME_REME_MP");
     resultText =
-      `🎲 Player 1 (@${fromNum}): ${p1Number}\n` +
-      `🎲 Player 2 (@${toNum}): ${p2Number}\n\n` +
-      `🏆 @${fromNum} MENANG!\n💰 +${config.currencySymbol}${bet * 2}\n\n` +
+      `🎲 @${fromNum}: ${p1Number}\n` +
+      `🎲 @${toNum}: ${p2Number}\n\n` +
+      `🎊🎉🎊\n` +
+      `🏆 @${fromNum} MENANG!\n` +
+      `💰 +${config.currencySymbol}${bet * 2}\n\n` +
       `💸 @${toNum} kalah -${config.currencySymbol}${bet}`;
   }
 
@@ -267,7 +280,7 @@ export async function handleInviteAccepted({ sock, msg, sender, reply, jid, send
 // SINGLEPLAYER
 // ============================
 
-async function playSingleplayer({ sender, bet, reply }) {
+async function playSingleplayer({ sender, bet, reply, sock, msg, jid }) {
   const deduction = await subtractBalance(sender, bet, "BET_REME");
   if (!deduction.success) {
     return reply(
@@ -275,26 +288,37 @@ async function playSingleplayer({ sender, bet, reply }) {
     );
   }
 
-  const rolls = [randomInt(0, 36), randomInt(0, 36), randomInt(0, 36)];
   const finalNumber = randomInt(0, 36);
   const botNumber = randomInt(0, 36);
   const won = Math.random() < 0.5;
   const payout = won ? bet * 2 : 0;
 
-  // Animasi sederhana via edit
-  await new Promise(r => setTimeout(r, 800));
+  // Kirim animasi rolling sebagai reply biasa (tanpa edit)
+  // karena singleplayer pakai reply() yang sudah ada context
+  await reply(
+    `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\n` +
+    `🎰 Rolling...\n\n⏳ ███░░░░░░░ 30%`
+  );
 
-  const resultText = won
-    ? `✅ *MENANG!*\n\nKamu: ${finalNumber}\nBot: ${botNumber}\n\n💰 +${config.currencySymbol}${payout}`
-    : `❌ *KALAH!*\n\nKamu: ${finalNumber}\nBot: ${botNumber}\n\n💸 -${config.currencySymbol}${bet}`;
+  await sleep(800);
+
+  const resultEmoji = won ? "✅" : "❌";
+  const resultLabel = won ? "MENANG!" : "KALAH!";
+  const resultIcon = won ? "🎊🎉🎊" : "😢💔";
+  const moneyLine = won
+    ? `💰 +${config.currencySymbol}${payout}`
+    : `💸 -${config.currencySymbol}${bet}`;
 
   const newBalance = await recordGameResult(sender, won, payout, "GAME_REME");
   gameStateManager.clearPlayerState(sender);
 
   return reply(
     `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\n` +
-    `🎲 Rolling...\n${rolls.join(" → ")}\n\n` +
-    `${resultText}\n\n` +
+    `${resultIcon}\n\n` +
+    `${resultEmoji} *${resultLabel}*\n\n` +
+    `🎲 Kamu: ${finalNumber}\n` +
+    `🤖 Bot: ${botNumber}\n\n` +
+    `${moneyLine}\n\n` +
     `💵 Balance: ${config.currencySymbol}${newBalance}\n\n` +
     `Main lagi: !g <bet>\nKeluar: !back\n\n${config.ui.line}`
   );
@@ -327,7 +351,12 @@ async function playMultiplayer({ sender, bet, reply, opponent }) {
     );
   }
 
-  await new Promise(r => setTimeout(r, 800));
+  // Animasi rolling via reply
+  await reply(
+    `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\n` +
+    `🎰 Rolling...\n⏳ ███░░░░░░░`
+  );
+  await sleep(1000);
 
   const p1Number = randomInt(0, 36);
   const p2Number = randomInt(0, 36);
@@ -340,16 +369,19 @@ async function playMultiplayer({ sender, bet, reply, opponent }) {
     await addBalance(sender, bet * 2, "WIN_REME_MP");
     await recordGameResult(sender, true, 0, "GAME_REME_MP");
     await recordGameResult(opponent, false, 0, "GAME_REME_MP");
-    resultText = `✅ *MENANG!*\n\nKamu: ${p1Number}\nLawan: ${p2Number}\n\n💰 +${config.currencySymbol}${bet * 2}`;
+    resultText = `🎊🎉🎊\n\n✅ *MENANG!*\n\n🎲 Kamu: ${p1Number}\n🎲 @${oppNum}: ${p2Number}\n\n💰 +${config.currencySymbol}${bet * 2}`;
   } else {
     await addBalance(opponent, bet * 2, "WIN_REME_MP");
     await recordGameResult(sender, false, 0, "GAME_REME_MP");
     await recordGameResult(opponent, true, 0, "GAME_REME_MP");
-    resultText = `❌ *KALAH!*\n\nKamu: ${p1Number}\nLawan (@${oppNum}): ${p2Number}\n\n💸 -${config.currencySymbol}${bet}`;
+    resultText = `😢💔\n\n❌ *KALAH!*\n\n🎲 Kamu: ${p1Number}\n🎲 @${oppNum}: ${p2Number}\n\n💸 -${config.currencySymbol}${bet}`;
   }
 
   gameStateManager.clearPlayerState(sender);
-  const newBalance = await recordGameResult(sender, senderWon, 0, "GAME_REME_MP_FINAL");
+  // FIX: Removed duplicate recordGameResult call that was here before
+
+  const senderUser = getUser(sender);
+  const newBalance = senderUser?.balance || 0;
 
   return reply(
     `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\n${resultText}\n\n` +

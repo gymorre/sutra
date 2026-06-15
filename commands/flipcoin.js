@@ -6,6 +6,7 @@ import { subtractBalance, recordGameResult, addBalance, getUser } from "../utils
 import { randomChoice } from "../utils/random.js";
 import { gameStateManager } from "../utils/gameState.js";
 import { config } from "../config.js";
+import { animateMessage, sleep } from "../utils/animation.js";
 
 export const name = "flipcoin";
 export const aliases = ["fp", "flip"];
@@ -234,6 +235,7 @@ export async function handleInviteAccepted({ sock, msg, sender, reply, jid, send
   await sendTo(
     jid,
     `@${fromNum} @${toNum}\n${config.ui.line}\n┃ 🪙 FLIPCOIN MULTIPLAYER DIMULAI!\n${config.ui.line}\n\n` +
+    `⚔️ VERSUS!\n\n` +
     `👤 Player 1: @${fromNum}\n👤 Player 2: @${toNum}\n\n` +
     `💰 Bet: ${config.currencySymbol}${bet} masing-masing\n\n` +
     `Keduanya, pilih sisi koin:\n!g head\n!g tail\n\nKeluar: !back\n\n${config.ui.line}`,
@@ -253,21 +255,60 @@ async function playSingleplayer({ sender, bet, choice, reply }) {
     );
   }
 
-  await new Promise(r => setTimeout(r, 900));
+  const choiceEmoji = choice === "head" ? "👑" : "🦅";
+
+  // === ANIMASI COIN FLIP ===
+  await reply(
+    `${config.ui.line}\n┃ 🪙 FLIPCOIN\n${config.ui.line}\n\n` +
+    `${choiceEmoji} Pilihan: *${choice.toUpperCase()}*\n\n` +
+    `🪙 Melempar koin ke udara...\n\n` +
+    `      🪙\n` +
+    `      ↑↑↑`
+  );
+  await sleep(700);
+
+  await reply(
+    `${config.ui.line}\n┃ 🪙 FLIPCOIN\n${config.ui.line}\n\n` +
+    `🌀 Koin berputar...\n\n` +
+    `    ✨ 🪙 ✨\n` +
+    `    ~ ~ ~ ~`
+  );
+  await sleep(700);
+
+  await reply(
+    `${config.ui.line}\n┃ 🪙 FLIPCOIN\n${config.ui.line}\n\n` +
+    `⬇️ Koin turun...\n\n` +
+    `      🪙\n` +
+    `      ↓↓↓`
+  );
+  await sleep(500);
 
   const result = randomChoice(["head", "tail"]);
   const won = choice === result;
   const payout = won ? bet * 2 : 0;
+  const resultEmoji = result === "head" ? "👑 HEAD" : "🦅 TAIL";
 
-  const resultText = won
-    ? `✅ *MENANG!*\n\nPilihan: ${choice.toUpperCase()}\nHasil: ${result.toUpperCase()}\n\n💰 +${config.currencySymbol}${payout}`
-    : `❌ *KALAH!*\n\nPilihan: ${choice.toUpperCase()}\nHasil: ${result.toUpperCase()}\n\n💸 -${config.currencySymbol}${bet}`;
+  const winLoseEmoji = won ? "🎊🎉🎊" : "😢💔";
+  const resultLabel = won ? "MENANG!" : "KALAH!";
+  const resultIcon = won ? "✅" : "❌";
+  const moneyLine = won
+    ? `💰 +${config.currencySymbol}${payout}`
+    : `💸 -${config.currencySymbol}${bet}`;
 
   const newBalance = await recordGameResult(sender, won, payout, "GAME_FLIPCOIN");
   gameStateManager.clearPlayerState(sender);
 
   return reply(
-    `${config.ui.line}\n┃ 🪙 FLIPCOIN\n${config.ui.line}\n\n🪙 Flipping...\n\n${resultText}\n\n💵 Balance: ${config.currencySymbol}${newBalance}\n\nMain lagi: !g <bet> head/tail\nKeluar: !back\n\n${config.ui.line}`
+    `${config.ui.line}\n┃ 🪙 FLIPCOIN\n${config.ui.line}\n\n` +
+    `🖐️ TANGKAP!\n\n` +
+    `🪙 Hasil: *${resultEmoji}*\n\n` +
+    `${winLoseEmoji}\n\n` +
+    `${resultIcon} *${resultLabel}*\n\n` +
+    `${choiceEmoji} Pilihan: ${choice.toUpperCase()}\n` +
+    `🪙 Hasil: ${result.toUpperCase()}\n\n` +
+    `${moneyLine}\n` +
+    `💵 Balance: ${config.currencySymbol}${newBalance}\n\n` +
+    `Main lagi: !g <bet> head/tail\nKeluar: !back\n\n${config.ui.line}`
   );
 }
 
@@ -286,39 +327,63 @@ async function playMultiplayer({ sender, bet, choice, reply, opponent }) {
   const opponentChoice = opponentState?.data?.choice;
 
   if (!opponentChoice) {
+    const choiceEmoji = choice === "head" ? "👑" : "🦅";
     return reply(
-      `${config.ui.line}\n┃ 🪙 FLIPCOIN\n${config.ui.line}\n\n✅ Pilihanmu tersimpan: ${choice.toUpperCase()}\n\nMenunggu lawan memilih...\n\n${config.ui.line}`,
+      `${config.ui.line}\n┃ 🪙 FLIPCOIN\n${config.ui.line}\n\n` +
+      `${choiceEmoji} Pilihanmu: *${choice.toUpperCase()}* ✅\n\n` +
+      `⏳ Menunggu lawan memilih...\n\n${config.ui.line}`,
       [opponent]
     );
   }
 
-  // Kedua player sudah memilih - main!
-  await new Promise(r => setTimeout(r, 800));
+  // === ANIMASI FLIP MULTIPLAYER ===
+  await reply(
+    `${config.ui.line}\n┃ 🪙 FLIPCOIN\n${config.ui.line}\n\n` +
+    `🪙 Melempar koin...\n\n` +
+    `    ✨ 🪙 ✨\n` +
+    `    ~ ~ ~ ~`
+  );
+  await sleep(1000);
 
   const result = randomChoice(["head", "tail"]);
   const senderWon = choice === result;
   const oppWon = opponentChoice === result;
   const oppNum = opponent.split("@")[0];
   const senderNum = sender.split("@")[0];
+  const resultEmoji = result === "head" ? "👑 HEAD" : "🦅 TAIL";
 
   let resultText;
   if (senderWon && !oppWon) {
     await addBalance(sender, bet * 2, "WIN_FLIP_MP");
     await recordGameResult(sender, true, 0, "GAME_FLIP_MP");
     await recordGameResult(opponent, false, 0, "GAME_FLIP_MP");
-    resultText = `🪙 Hasil: ${result.toUpperCase()}\n\n@${senderNum}: ${choice.toUpperCase()} ✅\n@${oppNum}: ${opponentChoice.toUpperCase()} ❌\n\n🏆 @${senderNum} MENANG!\n💰 +${config.currencySymbol}${bet * 2}`;
+    resultText =
+      `🪙 Hasil: *${resultEmoji}*\n\n` +
+      `@${senderNum}: ${choice.toUpperCase()} ✅\n` +
+      `@${oppNum}: ${opponentChoice.toUpperCase()} ❌\n\n` +
+      `🎊🎉🎊\n` +
+      `🏆 @${senderNum} MENANG!\n💰 +${config.currencySymbol}${bet * 2}`;
   } else if (!senderWon && oppWon) {
     await addBalance(opponent, bet * 2, "WIN_FLIP_MP");
     await recordGameResult(opponent, true, 0, "GAME_FLIP_MP");
     await recordGameResult(sender, false, 0, "GAME_FLIP_MP");
-    resultText = `🪙 Hasil: ${result.toUpperCase()}\n\n@${senderNum}: ${choice.toUpperCase()} ❌\n@${oppNum}: ${opponentChoice.toUpperCase()} ✅\n\n🏆 @${oppNum} MENANG!\n💰 +${config.currencySymbol}${bet * 2}`;
+    resultText =
+      `🪙 Hasil: *${resultEmoji}*\n\n` +
+      `@${senderNum}: ${choice.toUpperCase()} ❌\n` +
+      `@${oppNum}: ${opponentChoice.toUpperCase()} ✅\n\n` +
+      `🎊🎉🎊\n` +
+      `🏆 @${oppNum} MENANG!\n💰 +${config.currencySymbol}${bet * 2}`;
   } else {
     // SERI (keduanya sama)
     await addBalance(sender, bet, "REFUND_FLIP_MP_DRAW");
     await addBalance(opponent, bet, "REFUND_FLIP_MP_DRAW");
     await recordGameResult(sender, false, 0, "GAME_FLIP_MP_DRAW");
     await recordGameResult(opponent, false, 0, "GAME_FLIP_MP_DRAW");
-    resultText = `🪙 Hasil: ${result.toUpperCase()}\n\n@${senderNum}: ${choice.toUpperCase()}\n@${oppNum}: ${opponentChoice.toUpperCase()}\n\n🤝 SERI! Bet dikembalikan.`;
+    resultText =
+      `🪙 Hasil: *${resultEmoji}*\n\n` +
+      `@${senderNum}: ${choice.toUpperCase()}\n` +
+      `@${oppNum}: ${opponentChoice.toUpperCase()}\n\n` +
+      `🤝 SERI! Bet dikembalikan.`;
   }
 
   gameStateManager.clearPlayerState(sender);

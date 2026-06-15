@@ -11,6 +11,7 @@ import {
 } from "../utils/economy.js";
 import { gameStateManager } from "../utils/gameState.js";
 import { config } from "../config.js";
+import { sleep } from "../utils/animation.js";
 
 export const name = "fb";
 export const aliases = ["fruitbomb", "buah"];
@@ -67,13 +68,21 @@ function renderBoard(cells, picked = [], showAll = false) {
         // Reveal all (akhir game)
         cols.push(cells[idx] === "bomb" ? "💣" : FRUITS[idx]);
       } else {
-        // Belum dipilih - tampilkan nomor
+        // Belum dipilih - tampilkan nomor dengan box
         cols.push(`[${num}]`);
       }
     }
     rows.push(cols.join("  "));
   }
   return rows.join("\n");
+}
+
+/** Render progress bar multiplier */
+function renderMultiplierBar(fruitsFound) {
+  const total = TOTAL_CELLS - BOMB_COUNT; // 6
+  const filled = fruitsFound;
+  const bar = "🟩".repeat(filled) + "⬜".repeat(total - filled);
+  return `${bar} ${filled}/${total}`;
 }
 
 function getGame(jid) {
@@ -130,6 +139,7 @@ export async function execute({ sender, args, reply }) {
       `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
       `Kamu masih punya game aktif!\n\n` +
       renderBoard(cells, picked) + "\n\n" +
+      `${renderMultiplierBar(existing.fruits_found)}\n` +
       `💰 Bet: ${config.currencySymbol}${existing.bet}\n` +
       `🍎 Buah ditemukan: ${existing.fruits_found}\n` +
       `📈 Multiplier: ${mult}x\n\n` +
@@ -301,12 +311,22 @@ export async function handleInviteAccepted({ sock, msg, sender, reply, jid, send
 
   const board = renderBoard(cells, []);
 
+  // === ANIMASI START ===
+  await sendTo(
+    jid,
+    `@${fromNum} @${toNum}\n${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+    `⚔️ Mempersiapkan arena...\n\n3️⃣ 2️⃣ 1️⃣ GO!`,
+    [from, sender]
+  );
+  await sleep(1000);
+
   await sendTo(
     jid,
     `@${fromNum} @${toNum}\n${config.ui.line}\n┃ 🍎 FRUIT BOMB - MULTIPLAYER DIMULAI!\n${config.ui.line}\n\n` +
     `👤 Player 1: @${fromNum}\n👤 Player 2: @${toNum}\n\n` +
     `💰 Bet: ${config.currencySymbol}${bet} masing-masing\n\n` +
     board + "\n\n" +
+    `${renderMultiplierBar(0)}\n\n` +
     `🎯 Giliran: @${fromNum}\n\nPilih kotak: !g <1-9>\n\n` +
     `${config.ui.line}`,
     [from, sender]
@@ -373,6 +393,7 @@ export async function handleGameCommand({ sock, msg, sender, args, reply, jid, c
       return reply(
         `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
         renderBoard(cells, picked) + "\n\n" +
+        `${renderMultiplierBar(existing.fruits_found)}\n` +
         `🍎 Buah: ${existing.fruits_found} | 📈 ${existing.current_multiplier.toFixed(1)}x\n\n` +
         `Pilih: !g <1-9>\nCairkan: !cash\n\n${config.ui.line}`
       );
@@ -399,10 +420,21 @@ async function startBotGame({ sender, bet, reply }) {
   saveGame(sender, bet, cells, bombPositions, 0, [], 1.0, "bot", null, sender);
   gameStateManager.setPlayerInGame(sender, "fb");
 
+  // === ANIMASI SETUP ===
+  await reply(
+    `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+    `🎰 Menyusun arena...\n\n` +
+    `📦 📦 📦\n📦 📦 📦\n📦 📦 📦\n\n` +
+    `💣 3 bom tersembunyi...`
+  );
+  await sleep(800);
+
   return reply(
     `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
     `💰 Bet: ${config.currencySymbol}${bet}\n\n` +
     renderBoard(cells, []) + "\n\n" +
+    `${renderMultiplierBar(0)}\n` +
+    `📈 Multiplier: 1.0x\n\n` +
     `🎯 Pilih kotak 1-9!\nMisal: !g 5\n\nCairkan: !cash\nKeluar: !back\n\n${config.ui.line}`
   );
 }
@@ -447,7 +479,23 @@ async function handleMove({ sender, pos, reply, jid, sendTo, sock, msg }) {
   const newPicked = [...picked, idx];
   const isBomb = cells[idx] === "bomb";
 
+  // === ANIMASI MEMBUKA KOTAK ===
+  await reply(
+    `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+    `🎯 Membuka kotak ${pos}...\n\n` +
+    `📦 → ❓\n⏳ ...`
+  );
+  await sleep(600);
+
   if (isBomb) {
+    // === ANIMASI LEDAKAN ===
+    await reply(
+      `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+      `💣 Kotak bergetar...\n\n` +
+      `   📦💥\n   tick... tick...`
+    );
+    await sleep(700);
+
     // KALAH - reveal semua
     deleteGame(boardOwnerJid);
     gameStateManager.clearPlayerState(boardOwnerJid);
@@ -467,8 +515,10 @@ async function handleMove({ sender, pos, reply, jid, sendTo, sock, msg }) {
       const winNum = winnerJid.split("@")[0];
       return reply(
         `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+        `💥💥💥 BOOM! 💥💥💥\n\n` +
         renderBoard(cells, newPicked, true) + "\n\n" +
         `💣 @${loserNum} kena BOM!\n\n` +
+        `🎊🎉🎊\n` +
         `🏆 @${winNum} MENANG!\n💰 +${config.currencySymbol}${game.bet * 2}\n\n${config.ui.line}`,
         [loserJid, winnerJid]
       );
@@ -477,11 +527,16 @@ async function handleMove({ sender, pos, reply, jid, sendTo, sock, msg }) {
     await recordGameResult(sender, false, 0, "GAME_FB");
     return reply(
       `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+      `💥💥💥 BOOM! 💥💥💥\n\n` +
       renderBoard(cells, newPicked, true) + "\n\n" +
-      `💣 BOM! Kamu KALAH!\n💸 -${config.currencySymbol}${game.bet}\n\n` +
+      `💣 BOM! Kamu KALAH!\n` +
+      `💸 -${config.currencySymbol}${game.bet}\n\n` +
       `Mau coba lagi?\n!fb <bet>\n\nKeluar: !back\n\n${config.ui.line}`
     );
   }
+
+  // === ANIMASI BUAH DITEMUKAN ===
+  const fruit = FRUITS[idx];
 
   // BUAH - update state
   const newFruits = game.fruits_found + 1;
@@ -507,8 +562,10 @@ async function handleMove({ sender, pos, reply, jid, sendTo, sock, msg }) {
       const winnerNum = winnerJid.split("@")[0];
       return reply(
         `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+        `✨ Kotak ${pos} = ${fruit}!\n\n` +
         renderBoard(cells, newPicked, true) + "\n\n" +
-        `🎉 JACKPOT! @${winnerNum} menemukan SEMUA buah!\n` +
+        `🎊🎉🎊🎉🎊\n\n` +
+        `🏆 JACKPOT! @${winnerNum} menemukan SEMUA buah!\n` +
         `💰 +${config.currencySymbol}${potentialWin} (${newMult}x)\n\n${config.ui.line}`,
         [winnerJid, loserJid]
       );
@@ -518,8 +575,10 @@ async function handleMove({ sender, pos, reply, jid, sendTo, sock, msg }) {
     await addBalance(sender, potentialWin, "WIN_FB_JACKPOT");
     return reply(
       `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+      `✨ Kotak ${pos} = ${fruit}!\n\n` +
       renderBoard(cells, newPicked, true) + "\n\n" +
-      `🎉 JACKPOT! Semua buah ditemukan!\n` +
+      `🎊🎉🎊🎉🎊\n\n` +
+      `🏆 JACKPOT! Semua buah ditemukan!\n` +
       `💰 +${config.currencySymbol}${potentialWin} (10x)\n\nKeluar: !back\n\n${config.ui.line}`
     );
   }
@@ -545,7 +604,9 @@ async function handleMove({ sender, pos, reply, jid, sendTo, sock, msg }) {
 
   return reply(
     `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
+    `✨ Kotak ${pos} = ${fruit}! AMAN!\n\n` +
     renderBoard(cells, newPicked) + "\n\n" +
+    `${renderMultiplierBar(newFruits)}\n` +
     `🍎 Buah ditemukan: ${newFruits}\n` +
     `📈 Multiplier: ${newMult}x\n` +
     `💰 Potensi menang: ${config.currencySymbol}${potentialWin}\n\n` +
@@ -593,7 +654,7 @@ async function handleCashOut({ sender, reply }) {
 
   return reply(
     `${config.ui.line}\n┃ 🍎 FRUIT BOMB\n${config.ui.line}\n\n` +
-    `💵 CASH OUT!\n\n` +
+    `💵💵💵 CASH OUT! 💵💵💵\n\n` +
     `🍎 Buah: ${game.fruits_found}\n` +
     `📈 Multiplier: ${mult}x\n` +
     `💰 Kamu dapat: ${config.currencySymbol}${payout}\n\n` +
