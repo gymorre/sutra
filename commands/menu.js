@@ -49,28 +49,27 @@ export async function execute({ reply }) {
 🟢 STATUS : *ONLINE*
 🕐 TIME   : ${timeWIB}
 
-_Bot created by @aditias_
-_Version : ${version}_
+Bot created by @aditias
+Version : ${version}
 ══════════════════════
 
 📂 */MENU*
 │
-├── 📂 *!Game*
-├── 📂 *!Deposit*
-├── 📂 *!Withdraw*
-├── 📂 *!Kurs*
-├── 📂 *!Idx*
-├── 📂 *!Dv*
-├── 📂 *!Support*
-├── 📂 *!Invite*
+├── 🎮 *!Game*
+├── 💰 *!Deposit*
+├── 💵 *!Withdraw*
+├── 💱 *!Kurs*
+├── 🏛️ *!Idx*
+├── 🎥 *!Dv*
+├── 📞 *!Support*
+├── 🔗 *!Invite*
 └── ⏳ *More Feature Coming Soon*
 
 ══════════════════════
 📌 *NOTE:*
-Bot masih dalam tahap pengembangan *(BETA)*
-Jika menemukan bug harap segera lapor ke
-team support kami :D
+Bot masih dalam tahap pengembangan *(BETA)* Jika menemukan bug harap segera lapor ke team support kami :D
 ══════════════════════
+_©2026 All Rights Reserved. Sutra Bot_
 `;
 
   return reply(menuText);
