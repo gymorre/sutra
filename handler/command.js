@@ -75,10 +75,6 @@ function registerCommand(cmd) {
 // Daftarkan reward commands (hourly, daily, weekly, monthly) - array
 rewards.forEach(registerCommand);
 
-// ============================
-// HANDLE GAS COMMAND
-// !gas <game> <bet...>
-// ============================
 
 async function handleGas(ctx) {
   const { args, reply } = ctx;
@@ -98,9 +94,6 @@ async function handleGas(ctx) {
   return gasCommand.execute({ ...ctx, args: newArgs });
 }
 
-// ============================
-// MAIN EXECUTE
-// ============================
 
 /**
  * @param {object} ctx - context berisi sock, msg, sender, command, args, reply, jid, isGroup, groupJid

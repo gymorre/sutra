@@ -1,7 +1,3 @@
-// commands/reme.js
-// Game 50/50 dengan angka acak 0-36
-// Support: Single player vs bot, Multiplayer vs player
-
 import { subtractBalance, recordGameResult, addBalance, getUser, getUserByNickname } from "../utils/economy.js";
 import { randomInt } from "../utils/random.js";
 import { animateMessage } from "../utils/animation.js";

@@ -1,6 +1,3 @@
-// config.js
-// Konfigurasi global untuk SUTRA BOT
-
 export const config = {
   botName: "SUTRA",
   prefix: "!",

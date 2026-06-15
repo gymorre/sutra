@@ -11,24 +11,11 @@ export async function execute({ reply }) {
 ┃ GAME MENU
 ${config.ui.doubleLine}
 
-⚡ CARA BERMAIN GAME:
-
-Gunakan salah satu:
-!gas <game> <bet>  → Bermain dengan nama game
-!re <bet>          → Bermain game Reme langsung
-!bet <amount>      → Bermain game default
-!g                 → Quick start game
-
-Contoh:
-!re 100
-!bet 100
-!g
-
 ${config.ui.line}
 
 🎮 MINI GAME TERSEDIA:
 
-• !re
+• !reme
 • !bj (BlackJack)
 • !flipcoin / !fp
 • !tictactoe / !ttt
