@@ -14,17 +14,33 @@ export async function execute({ reply }) {
     const data = await res.json();
 
     const rates = data.rates;
+    const idrRate = rates.IDR || 1;
+
+    // Konversi semua ke Rupiah sebagai base
+    const jpy = idrRate / (rates.JPY || 1);
+    const cny = idrRate / (rates.CNY || 1);
+    const myr = idrRate / (rates.MYR || 1);
+    const usd = 1 / (idrRate || 1);
 
     const text = `${config.ui.line}
 ┃ KURS REALTIME
 ${config.ui.line}
 
-💵 1 USD =
+🇮🇩 1 IDR =
 
-🇯🇵 JPY : ${rates.JPY?.toFixed(2) ?? "N/A"}
-🇨🇳 CNY : ${rates.CNY?.toFixed(2) ?? "N/A"}
-🇲🇾 MYR : ${rates.MYR?.toFixed(2) ?? "N/A"}
-🇮🇩 IDR : ${rates.IDR?.toFixed(2) ?? "N/A"}
+🇺🇸 USD : ${usd?.toFixed(6) ?? "N/A"}
+🇯🇵 JPY : ${jpy?.toFixed(4) ?? "N/A"}
+🇨🇳 CNY : ${cny?.toFixed(6) ?? "N/A"}
+🇲🇾 MYR : ${myr?.toFixed(6) ?? "N/A"}
+
+${config.ui.line}
+
+📊 Atau:
+
+🇺🇸 1 USD = ${rates.IDR?.toFixed(0) ?? "N/A"} IDR
+🇯🇵 1 JPY = ${(idrRate / rates.JPY)?.toFixed(4) ?? "N/A"} IDR
+🇨🇳 1 CNY = ${(idrRate / rates.CNY)?.toFixed(2) ?? "N/A"} IDR
+🇲🇾 1 MYR = ${(idrRate / rates.MYR)?.toFixed(2) ?? "N/A"} IDR
 
 ${config.ui.line}
 
