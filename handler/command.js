@@ -31,7 +31,15 @@ import invitebot from "../commands/invitebot.js";
 import transfer from "../commands/transfer.js";
 import multiplayer from "../commands/multiplayer.js";
 import me from "../commands/me.js";
-import { isAdmin, handleGive, handleRemove } from "../commands/admin.js";
+import give from "../commands/give.js";
+import remove from "../commands/remove.js";
+
+const ADMIN_NUMBER = "6285158220582";
+
+export function isAdmin(sender) {
+  const senderNum = sender.split("@")[0].split(":")[0];
+  return senderNum === ADMIN_NUMBER;
+}
 
 // ============================
 // REGISTRY
@@ -66,7 +74,8 @@ function registerGame(cmd) {
   menu, game, register,
   balance, cek, leaderboard,
   kurs, deposit, withdraw, idx, dv, dw,
-  support, invitebot, transfer, multiplayer, me
+  support, invitebot, transfer, multiplayer, me,
+  give, remove
 ].forEach(registerCommand);
 
 // Daftarkan game commands
@@ -151,9 +160,9 @@ export async function executeCommand(ctx) {
   // ============================
   if ((command === "give" || command === "remove") && isAdmin(sender)) {
     if (command === "give") {
-      return handleGive({ ...ctx });
+      return give.execute({ ...ctx });
     }
-    return handleRemove({ ...ctx });
+    return remove.execute({ ...ctx });
   }
 
   // ============================
