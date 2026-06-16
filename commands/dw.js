@@ -3,7 +3,7 @@ import { createCanvas } from "canvas";
 import fs from "fs";
 import path from "path";
 import { tmpdir } from "os";
-import Jimp from "jimp";
+import { Jimp } from "jimp";
 
 export const name = "s";
 export const aliases = ["stiker", "sticker", "stext"];
@@ -108,17 +108,12 @@ async function generateTextSticker(text) {
 }
 
 /**
- * Convert PNG buffer ke WebP stiker menggunakan Jimp
- * (Jimp tidak butuh libwebp system, pure JS)
+ * Convert PNG buffer ke buffer stiker menggunakan Jimp
  */
 async function pngToWebpSticker(pngBuffer) {
   const image = await Jimp.read(pngBuffer);
-  image.resize(512, 512);
-
-  // Jimp v0.x: getBufferAsync untuk MIME_PNG, lalu kita kirim sebagai sticker
-  // WhatsApp menerima image/webp untuk stiker, tapi bisa juga PNG
-  const outBuffer = await image.getBufferAsync(Jimp.MIME_PNG);
-  return outBuffer;
+  image.resize({ w: 512, h: 512 });
+  return await image.getBuffer("image/png");
 }
 
 export async function execute({ args, reply, sock, msg }) {
@@ -157,7 +152,7 @@ export async function execute({ args, reply, sock, msg }) {
       sticker: stickerBuffer,
     });
   } catch (err) {
-    console.error("[S] Error:", err.message);
+    console.error("[DW] Error:", err.message);
     return reply(
       `${config.ui.line}\n┃ 🖼️ STIKER TEKS\n${config.ui.line}\n\n` +
         `❌ Gagal membuat stiker!\n` +
