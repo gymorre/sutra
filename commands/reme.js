@@ -1,6 +1,8 @@
 // commands/reme.js
-// Game Reme - angka acak 0-36, 50/50 menang/kalah
-// Flow baru: !reme -> set bet -> main solo. Jika mau duo/multiplayer, lewat !multiplayer.
+// Game Reme - angka acak 0-36, pemenang ditentukan dari digit sum
+// Aturan: angka dijumlahkan digitnya (22 → 2+2=4), tertinggi menang
+// Auto-win: angka 0, 19, 28 (digit sum 10 atau 0) → x3 payout
+// Tie vs bot → bot menang. Tie multiplayer → rematch otomatis.
 
 import { subtractBalance, recordGameResult, addBalance, getUser, getUserByNickname } from "../utils/economy.js";
 import { randomInt } from "../utils/random.js";
@@ -13,6 +15,42 @@ export const name = "re";
 export const aliases = ["reme"];
 export const requiresRegistration = true;
 export const isGasGame = false;
+
+// ============================
+// HELPERS: DIGIT SUM & AUTO-WIN
+// ============================
+
+/**
+ * Hitung digit sum dari angka.
+ * Contoh: 22 → 2+2 = 4, 36 → 3+6 = 9, 5 → 5, 0 → 0
+ */
+function digitSum(n) {
+  if (n === 0) return 0;
+  return String(n).split("").reduce((sum, d) => sum + parseInt(d, 10), 0);
+}
+
+/**
+ * Cek apakah angka adalah auto-win (angka 0, 19, 28).
+ * Digit sum: 0→0, 19→10, 28→10. Semua dianggap spesial.
+ */
+function isAutoWin(n) {
+  return n === 0 || n === 19 || n === 28;
+}
+
+/**
+ * Format tampilan angka + digit sum
+ */
+function formatNumber(n) {
+  const ds = digitSum(n);
+  if (isAutoWin(n)) {
+    return `${n} (★ AUTO WIN ★)`;
+  }
+  if (n >= 10) {
+    const digits = String(n).split("").join("+");
+    return `${n} (${digits}=${ds})`;
+  }
+  return `${n} (=${ds})`;
+}
 
 // ============================
 // ENTRY (!reme atau !re)
@@ -33,7 +71,9 @@ export async function execute({ sender, args, reply }) {
 
   return reply(
     `${config.ui.line}\n┃ 🎲 GAME REME (SOLO vs BOT)\n${config.ui.line}\n\n` +
-    `Reme adalah game angka acak 0-36 (50/50).\n\n` +
+    `Reme adalah game angka acak 0-36.\n` +
+    `Angka dijumlahkan digitnya (22 → 2+2 = 4).\n` +
+    `Tertinggi menang! Auto-win: 0, 19, 28 → x3!\n\n` +
     `Set bet untuk main:\n!bet <jumlah>\n\natau langsung main:\n!g <jumlah>\n\n` +
     `Keluar: !back atau !menu\n\n${config.ui.line}`
   );
@@ -163,7 +203,7 @@ export async function startMultiplayer({ sock, msg, sender, reply, jid, opponent
 }
 
 // ============================
-// ACCEPT INVITE
+// ACCEPT INVITE (Multiplayer)
 // ============================
 
 export async function handleInviteAccepted({ sock, msg, sender, reply, jid, sendTo, invite }) {
@@ -217,34 +257,77 @@ export async function handleInviteAccepted({ sock, msg, sender, reply, jid, send
   await animateMessage(sock, jid, rollingFrames.slice(0, 5), 600);
   await sleep(400);
 
-  const p1Number = randomInt(0, 36);
-  const p2Number = randomInt(0, 36);
-  const senderWon = Math.random() < 0.5;
+  // === MULTIPLAYER DIGIT-SUM LOGIC (rematch on tie) ===
+  let round = 1;
+  let p1Number, p2Number, p1Score, p2Score;
+  const maxRounds = 10; // safety limit
 
-  let resultText;
-  if (senderWon) {
-    await addBalance(sender, bet * 2, "WIN_REME_MP");
-    await recordGameResult(sender, true, 0, "GAME_REME_MP");
-    await recordGameResult(from, false, 0, "GAME_REME_MP");
-    resultText =
-      `🎲 @${fromNum}: ${p1Number}\n` +
-      `🎲 @${toNum}: ${p2Number}\n\n` +
-      `🎊🎉🎊\n` +
-      `🏆 @${toNum} MENANG!\n` +
-      `💰 +${config.currencySymbol}${bet * 2}\n\n` +
-      `💸 @${fromNum} kalah -${config.currencySymbol}${bet}`;
+  do {
+    p1Number = randomInt(0, 36);
+    p2Number = randomInt(0, 36);
+    p1Score = isAutoWin(p1Number) ? 99 : digitSum(p1Number); // auto-win gets highest priority
+    p2Score = isAutoWin(p2Number) ? 99 : digitSum(p2Number);
+
+    // If both auto-win, they tie at 99 → rematch
+    // If scores equal (non auto-win), rematch
+    if (p1Score !== p2Score) break;
+
+    // Tie → show rematch message and re-roll
+    if (round < maxRounds) {
+      await sendTo(
+        jid,
+        `@${fromNum} @${toNum}\n${header}\n\n` +
+        `🔄 SERI! Rematch Ronde ${round}...\n\n` +
+        `🎲 @${fromNum}: ${formatNumber(p1Number)}\n` +
+        `🎲 @${toNum}: ${formatNumber(p2Number)}\n\n` +
+        `⏳ Rolling ulang...\n\n${config.ui.line}`,
+        [from, sender]
+      );
+      await sleep(1500);
+    }
+    round++;
+  } while (p1Score === p2Score && round <= maxRounds);
+
+  // If still tied after max rounds, random pick
+  let winnerJid, loserJid;
+  if (p1Score === p2Score) {
+    // Fallback: random
+    if (Math.random() < 0.5) {
+      winnerJid = from;
+      loserJid = sender;
+    } else {
+      winnerJid = sender;
+      loserJid = from;
+    }
+  } else if (p1Score > p2Score) {
+    winnerJid = from;
+    loserJid = sender;
   } else {
-    await addBalance(from, bet * 2, "WIN_REME_MP");
-    await recordGameResult(from, true, 0, "GAME_REME_MP");
-    await recordGameResult(sender, false, 0, "GAME_REME_MP");
-    resultText =
-      `🎲 @${fromNum}: ${p1Number}\n` +
-      `🎲 @${toNum}: ${p2Number}\n\n` +
-      `🎊🎉🎊\n` +
-      `🏆 @${fromNum} MENANG!\n` +
-      `💰 +${config.currencySymbol}${bet * 2}\n\n` +
-      `💸 @${toNum} kalah -${config.currencySymbol}${bet}`;
+    winnerJid = sender;
+    loserJid = from;
   }
+
+  const winnerNum = winnerJid.split("@")[0];
+  const loserNum = loserJid.split("@")[0];
+
+  // Determine payout
+  const winnerNumber = winnerJid === from ? p1Number : p2Number;
+  const isAutoWinResult = isAutoWin(winnerNumber);
+  const payout = isAutoWinResult ? bet * 2 * 3 : bet * 2; // x3 for auto-win
+
+  await addBalance(winnerJid, payout, "WIN_REME_MP");
+  await recordGameResult(winnerJid, true, 0, "GAME_REME_MP");
+  await recordGameResult(loserJid, false, 0, "GAME_REME_MP");
+
+  const autoWinTag = isAutoWinResult ? "\n\n⭐ AUTO WIN x3! ⭐" : "";
+
+  const resultText =
+    `🎲 @${fromNum}: ${formatNumber(p1Number)}\n` +
+    `🎲 @${toNum}: ${formatNumber(p2Number)}\n\n` +
+    `🎊🎉🎊\n` +
+    `🏆 @${winnerNum} MENANG!${round > 1 ? ` (Ronde ${round})` : ""}\n` +
+    `💰 +${config.currencySymbol}${payout}${autoWinTag}\n\n` +
+    `💸 @${loserNum} kalah -${config.currencySymbol}${bet}`;
 
   // Lock state to FINISHED instead of clearing
   gameStateManager.setFinished(from);
@@ -260,7 +343,7 @@ export async function handleInviteAccepted({ sock, msg, sender, reply, jid, send
 }
 
 // ============================
-// SINGLEPLAYER
+// SINGLEPLAYER (vs BOT / dealer)
 // ============================
 
 async function playSingleplayer({ sender, bet, reply }) {
@@ -272,10 +355,45 @@ async function playSingleplayer({ sender, bet, reply }) {
     );
   }
 
-  const finalNumber = randomInt(0, 36);
+  const playerNumber = randomInt(0, 36);
   const botNumber = randomInt(0, 36);
-  const won = Math.random() < 0.5;
-  const payout = won ? bet * 2 : 0;
+
+  const playerAutoWin = isAutoWin(playerNumber);
+  const botAutoWin = isAutoWin(botNumber);
+
+  let won = false;
+  let payout = 0;
+  let specialMsg = "";
+
+  if (playerAutoWin && botAutoWin) {
+    // Both auto-win → bot (admin) wins
+    won = false;
+    specialMsg = "\n\n🤖 Bot juga mendapat angka spesial!\nDealer menang!";
+  } else if (botAutoWin) {
+    // Bot auto-win → bot wins
+    won = false;
+    specialMsg = "\n\n🤖 Bot mendapat angka spesial! Dealer menang!";
+  } else if (playerAutoWin) {
+    // Player auto-win → x3 payout
+    won = true;
+    payout = bet * 3;
+    specialMsg = "\n\n⭐ AUTO WIN x3! ⭐";
+  } else {
+    // Normal comparison by digit sum
+    const playerScore = digitSum(playerNumber);
+    const botScore = digitSum(botNumber);
+
+    if (playerScore > botScore) {
+      won = true;
+      payout = bet * 2;
+    } else if (playerScore === botScore) {
+      // Tie → bot (admin/dealer) wins
+      won = false;
+      specialMsg = "\n\n🤝 Angka sama! Dealer menang!";
+    } else {
+      won = false;
+    }
+  }
 
   await reply(
     `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\n` +
@@ -291,7 +409,10 @@ async function playSingleplayer({ sender, bet, reply }) {
     ? `💰 +${config.currencySymbol}${payout}`
     : `💸 -${config.currencySymbol}${bet}`;
 
-  const newBalance = await recordGameResult(sender, won, payout, "GAME_REME");
+  if (won) {
+    await addBalance(sender, payout, "WIN_REME");
+  }
+  const newBalance = await recordGameResult(sender, won, 0, "GAME_REME");
   
   // Lock state to FINISHED
   gameStateManager.setFinished(sender);
@@ -300,8 +421,8 @@ async function playSingleplayer({ sender, bet, reply }) {
     `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\n` +
     `${resultIcon}\n\n` +
     `${resultEmoji} *${resultLabel}*\n\n` +
-    `🎲 Kamu: ${finalNumber}\n` +
-    `🤖 Bot: ${botNumber}\n\n` +
+    `🎲 Kamu: ${formatNumber(playerNumber)}\n` +
+    `🤖 Bot: ${formatNumber(botNumber)}${specialMsg}\n\n` +
     `${moneyLine}\n\n` +
     `💵 Balance: ${config.currencySymbol}${newBalance}\n\n` +
     `Gunakan !back atau !menu untuk keluar dari meja.\n\n` +
@@ -345,23 +466,68 @@ async function playMultiplayer({ sender, bet, reply, opponent }) {
   );
   await sleep(1000);
 
-  const p1Number = randomInt(0, 36);
-  const p2Number = randomInt(0, 36);
-  const senderWon = Math.random() < 0.5;
-
-  let resultText;
   const oppNum = opponent.split("@")[0];
 
-  if (senderWon) {
-    await addBalance(sender, bet * 2, "WIN_REME_MP");
-    await recordGameResult(sender, true, 0, "GAME_REME_MP");
-    await recordGameResult(opponent, false, 0, "GAME_REME_MP");
-    resultText = `🎊🎉🎊\n\n✅ *MENANG!*\n\n🎲 Kamu: ${p1Number}\n🎲 @${oppNum}: ${p2Number}\n\n💰 +${config.currencySymbol}${bet * 2}`;
+  // === MULTIPLAYER DIGIT-SUM LOGIC (rematch on tie) ===
+  let round = 1;
+  let p1Number, p2Number, p1Score, p2Score;
+  const maxRounds = 10;
+
+  do {
+    p1Number = randomInt(0, 36);
+    p2Number = randomInt(0, 36);
+    p1Score = isAutoWin(p1Number) ? 99 : digitSum(p1Number);
+    p2Score = isAutoWin(p2Number) ? 99 : digitSum(p2Number);
+
+    if (p1Score !== p2Score) break;
+
+    if (round < maxRounds) {
+      await reply(
+        `${config.ui.line}\n┃ 🎲 GAME REME\n${config.ui.line}\n\n` +
+        `🔄 SERI! Rematch Ronde ${round}...\n\n` +
+        `🎲 Kamu: ${formatNumber(p1Number)}\n` +
+        `🎲 @${oppNum}: ${formatNumber(p2Number)}\n\n` +
+        `⏳ Rolling ulang...\n\n${config.ui.line}`,
+        [opponent]
+      );
+      await sleep(1500);
+    }
+    round++;
+  } while (p1Score === p2Score && round <= maxRounds);
+
+  let winnerJid, loserJid;
+  if (p1Score === p2Score) {
+    if (Math.random() < 0.5) {
+      winnerJid = sender;
+      loserJid = opponent;
+    } else {
+      winnerJid = opponent;
+      loserJid = sender;
+    }
+  } else if (p1Score > p2Score) {
+    winnerJid = sender;
+    loserJid = opponent;
   } else {
-    await addBalance(opponent, bet * 2, "WIN_REME_MP");
-    await recordGameResult(sender, false, 0, "GAME_REME_MP");
-    await recordGameResult(opponent, true, 0, "GAME_REME_MP");
-    resultText = `😢💔\n\n❌ *KALAH!*\n\n🎲 Kamu: ${p1Number}\n🎲 @${oppNum}: ${p2Number}\n\n💸 -${config.currencySymbol}${bet}`;
+    winnerJid = opponent;
+    loserJid = sender;
+  }
+
+  const winnerNumber = winnerJid === sender ? p1Number : p2Number;
+  const isAutoWinResult = isAutoWin(winnerNumber);
+  const payout = isAutoWinResult ? bet * 2 * 3 : bet * 2;
+
+  await addBalance(winnerJid, payout, "WIN_REME_MP");
+  await recordGameResult(winnerJid, true, 0, "GAME_REME_MP");
+  await recordGameResult(loserJid, false, 0, "GAME_REME_MP");
+
+  const autoWinTag = isAutoWinResult ? "\n\n⭐ AUTO WIN x3! ⭐" : "";
+  const senderWon = winnerJid === sender;
+
+  let resultText;
+  if (senderWon) {
+    resultText = `🎊🎉🎊\n\n✅ *MENANG!*${round > 1 ? ` (Ronde ${round})` : ""}\n\n🎲 Kamu: ${formatNumber(p1Number)}\n🎲 @${oppNum}: ${formatNumber(p2Number)}${autoWinTag}\n\n💰 +${config.currencySymbol}${payout}`;
+  } else {
+    resultText = `😢💔\n\n❌ *KALAH!*\n\n🎲 Kamu: ${formatNumber(p1Number)}\n🎲 @${oppNum}: ${formatNumber(p2Number)}\n\n💸 -${config.currencySymbol}${bet}`;
   }
 
   gameStateManager.setFinished(sender);

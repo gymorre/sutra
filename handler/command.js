@@ -5,6 +5,7 @@
 import { config } from "../config.js";
 import { isRegistered } from "../utils/economy.js";
 import { gameStateManager } from "../utils/gameState.js";
+import { db } from "../utils/database.js";
 
 // Import semua command
 import menu from "../commands/menu.js";
@@ -28,6 +29,7 @@ import support from "../commands/support.js";
 import invitebot from "../commands/invitebot.js";
 import transfer from "../commands/transfer.js";
 import multiplayer from "../commands/multiplayer.js";
+import { isAdmin, handleGive, handleRemove } from "../commands/admin.js";
 
 // ============================
 // REGISTRY
@@ -75,11 +77,11 @@ rewards.forEach(registerCommand);
 // COMMAND SETS SAAT DALAM GAME
 // ============================
 
-/** Command yang selalu diizinkan (keluar game) */
+/** Command yang selalu diizinkan (keluar game) - HANYA untuk state selain IN_GAME */
 const ALWAYS_ALLOWED = new Set(["back", "home", "menu"]);
 
-/** Command yang diizinkan saat IN_GAME */
-const IN_GAME_ALLOWED = new Set(["back", "home", "menu", "gas", "bet", "g", "cash"]);
+/** Command yang diizinkan saat IN_GAME — NO back/menu/home (player locked) */
+const IN_GAME_ALLOWED = new Set(["gas", "bet", "g", "cash"]);
 
 /** Command yang diizinkan saat MODE_SELECT */
 const MODE_SELECT_ALLOWED = new Set(["back", "home", "menu", "1", "2", "bet"]);
@@ -105,8 +107,8 @@ function getLockedMessage(state, game) {
     OPPONENT_SELECT: `Tag lawanmu:\n!tag @lawan\n\nKeluar: !back`,
     WAITING_INVITE: `Menunggu lawan menjawab...\n\nBatalkan: !back`,
     IN_GAME:
-      `Sedang bermain ${gameName}!\n\nCommand tersedia:\n` +
-      `!g <aksi/angka> → main\n!bet <jumlah> → set bet\n!cash → cairkan (fruitbomb)\n\nKeluar: !back`,
+      `Sedang bermain ${gameName}!\n\n⚠️ Kamu tidak bisa keluar saat permainan berlangsung!\n\nCommand tersedia:\n` +
+      `!g <aksi/angka> → main\n!bet <jumlah> → set bet\n!cash → cairkan (fruitbomb)`,
     FINISHED: `Pertandingan telah selesai!\n\nGunakan !back atau !menu untuk keluar dari meja sebelum bermain game lain atau menggunakan fitur lain.\n\nKeluar: !back`
   };
 
@@ -115,6 +117,19 @@ function getLockedMessage(state, game) {
     `${stateHints[state] || "Kamu sedang dalam game."}\n\n` +
     `${config.ui.line}`
   );
+}
+
+/**
+ * Helper: Clean up any stale TTT database records for a player
+ */
+function cleanupStaleTTTGames(playerJid) {
+  try {
+    db.prepare(
+      `UPDATE tictactoe_games SET status = 'finished' WHERE status = 'ongoing' AND (player_x = ? OR player_o = ?)`
+    ).run(playerJid, playerJid);
+  } catch (e) {
+    // Silently ignore DB errors during cleanup
+  }
 }
 
 // ============================
@@ -129,10 +144,32 @@ export async function executeCommand(ctx) {
   const playerState = gameStateManager.getPlayerState(sender);
 
   // ============================
+  // 0. HIDDEN ADMIN COMMANDS (!give / !remove)
+  //    Bypass semua game lock, tidak ditampilkan di menu
+  // ============================
+  if ((command === "give" || command === "remove") && isAdmin(sender)) {
+    if (command === "give") {
+      return handleGive({ ...ctx });
+    }
+    return handleRemove({ ...ctx });
+  }
+
+  // ============================
   // 1. KELUAR GAME (!back / !home / !menu)
+  //    BLOCKED during IN_GAME state — player must finish the game!
   // ============================
   if (ALWAYS_ALLOWED.has(command)) {
     if (gameStateManager.isPlayerInGame(sender)) {
+      const currentState = playerState?.state;
+
+      // BLOCK exit during IN_GAME — player cannot leave mid-game!
+      if (currentState === "IN_GAME") {
+        return reply(getLockedMessage("IN_GAME", playerState?.game));
+      }
+
+      // Allow exit for other states (MODE_SELECT, OPPONENT_SELECT, WAITING_INVITE, FINISHED)
+      // Clean up stale TTT games in database
+      cleanupStaleTTTGames(sender);
       gameStateManager.clearPlayerState(sender);
 
       // Jika !menu, tampilkan menu setelah keluar
@@ -248,10 +285,10 @@ export async function executeCommand(ctx) {
         }
       }
     } else if (state === "IN_GAME") {
-      allowed = IN_GAME_ALLOWED;
+      allowed = new Set([...IN_GAME_ALLOWED]);
       // Izinkan angka 1-9 untuk TicTacToe dan FruitBomb
       if (activeGame === "tictactoe" || activeGame === "fb") {
-        allowed = new Set([...IN_GAME_ALLOWED, "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+        ["1", "2", "3", "4", "5", "6", "7", "8", "9"].forEach(n => allowed.add(n));
       }
     }
 

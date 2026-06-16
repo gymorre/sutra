@@ -106,20 +106,9 @@ export async function execute({ sender, args, reply, jid }) {
   const existing = getActiveGameByPlayer(sender);
 
   if (existing) {
-    const board = JSON.parse(existing.board);
-    const playerXUser = getUser(existing.player_x);
-    const playerOUser = getUser(existing.player_o);
-    const turnUser = getUser(existing.turn);
-    const turnSymbol = existing.turn === existing.player_x ? "❌" : "⭕";
-
-    return reply(
-      `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n` +
-      `❌ ${playerXUser?.nickname || "Player 1"}\n` +
-      `⭕ ${playerOUser?.nickname || "Player 2"}\n\n` +
-      `${renderBoard(board)}\n\n` +
-      `Giliran: ${turnSymbol} ${turnUser?.nickname || "?"}\n\n` +
-      `Pilih posisi: 1-9\nKeluar: !back\n\n${config.ui.line}`
-    );
+    // Clean up stale game - set to finished and start fresh
+    db.prepare("UPDATE tictactoe_games SET status = 'finished' WHERE id = ?")
+      .run(existing.id);
   }
 
   const betArg = args[0];
