@@ -41,7 +41,7 @@ async function generateTextSticker(text) {
    * Bagi teks menjadi baris-baris yang pas dengan MAX_WIDTH
    */
   function wrapText(txt, fSize) {
-    ctx.font = `bold ${fSize}px Arial, sans-serif`;
+    ctx.font = `${fSize}px Arial`;
     const words = txt.split(" ");
     const lines = [];
     let current = "";
@@ -73,7 +73,7 @@ async function generateTextSticker(text) {
   const totalTextHeight = lines.length * lineHeight;
   const startY = (SIZE - totalTextHeight) / 2;
 
-  ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  ctx.font = `${fontSize}px Arial`;
 
   // Gambar setiap baris dengan justify
   lines.forEach((line, i) => {

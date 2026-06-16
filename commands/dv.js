@@ -26,54 +26,51 @@ function detectPlatform(url) {
 }
 
 /**
- * Download video menggunakan API cobalt.tools (gratis, tanpa watermark)
- * Docs: https://cobalt.tools
+ * Download video menggunakan API cobalt.tools (versi baru)
+ * Docs: https://github.com/imputnet/cobalt
  */
-async function fetchVideoUrl(url, platform) {
-  try {
-    // Cobalt API - support TikTok, Instagram, YouTube, Facebook
-    const apiUrl = "https://cobalt.tools/api/json";
+async function fetchVideoUrl(url) {
+  // ✅ Endpoint baru cobalt API
+  const apiUrl = "https://api.cobalt.tools";
 
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        url: url,
-        vQuality: "720",        // kualitas video
-        filenamePattern: "basic",
-        twitterGif: false,
-        tiktokH265: false,
-      }),
-    });
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      url: url,
+      videoQuality: "720",       // ✅ Nama field baru (bukan vQuality)
+      filenameStyle: "basic",    // ✅ Nama field baru (bukan filenamePattern)
+      twitterGif: false,
+      tiktokH265: false,
+    }),
+  });
 
-    if (!response.ok) throw new Error(`API error: ${response.status}`);
-
-    const data = await response.json();
-
-    // status: "stream" / "redirect" / "picker" / "error"
-    if (data.status === "error") {
-      throw new Error(data.text || "Gagal mengambil video");
-    }
-
-    if (data.status === "picker") {
-      // Ambil item pertama (biasanya video utama)
-      if (data.picker && data.picker.length > 0) {
-        return data.picker[0].url;
-      }
-      throw new Error("Tidak ada video yang bisa diunduh");
-    }
-
-    if (data.status === "stream" || data.status === "redirect") {
-      return data.url;
-    }
-
-    throw new Error("Respon API tidak dikenali");
-  } catch (err) {
-    throw new Error(err.message || "Gagal menghubungi server download");
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    throw new Error(`API error: ${response.status} ${errText}`);
   }
+
+  const data = await response.json();
+
+  if (data.status === "error") {
+    throw new Error(data.error?.code || data.text || "Gagal mengambil video");
+  }
+
+  if (data.status === "picker") {
+    if (data.picker && data.picker.length > 0) {
+      return data.picker[0].url;
+    }
+    throw new Error("Tidak ada video yang bisa diunduh");
+  }
+
+  if (data.status === "tunnel" || data.status === "redirect") {
+    return data.url;
+  }
+
+  throw new Error(`Respon tidak dikenali: ${data.status}`);
 }
 
 /**
@@ -97,7 +94,6 @@ async function downloadToTemp(url) {
 export async function execute({ args, reply, sock, msg }) {
   const url = args[0];
 
-  // Validasi input
   if (!url) {
     return reply(
       `${config.ui.line}\n┃ 🎥 DOWNLOAD VIDEO\n${config.ui.line}\n\n` +
@@ -115,7 +111,6 @@ export async function execute({ args, reply, sock, msg }) {
     );
   }
 
-  // Validasi URL
   if (!/^https?:\/\//i.test(url)) {
     return reply(
       `${config.ui.line}\n┃ 🎥 DOWNLOAD VIDEO\n${config.ui.line}\n\n` +
@@ -145,7 +140,6 @@ export async function execute({ args, reply, sock, msg }) {
     facebook: "📘 Facebook",
   }[platform];
 
-  // Kirim pesan loading
   await reply(
     `${config.ui.line}\n┃ 🎥 DOWNLOAD VIDEO\n${config.ui.line}\n\n` +
       `⏳ Sedang memproses...\n` +
@@ -157,16 +151,10 @@ export async function execute({ args, reply, sock, msg }) {
   let tmpFile = null;
 
   try {
-    // Ambil URL video dari API
-    const videoUrl = await fetchVideoUrl(url, platform);
-
-    // Download video ke file sementara
+    const videoUrl = await fetchVideoUrl(url);
     tmpFile = await downloadToTemp(videoUrl);
-
-    // Baca file sebagai buffer
     const videoBuffer = fs.readFileSync(tmpFile);
 
-    // Kirim video ke chat
     const jid = msg.key.remoteJid;
     await sock.sendMessage(jid, {
       video: videoBuffer,
@@ -192,7 +180,6 @@ export async function execute({ args, reply, sock, msg }) {
         `${config.ui.line}`
     );
   } finally {
-    // Hapus file sementara
     if (tmpFile && fs.existsSync(tmpFile)) {
       fs.unlinkSync(tmpFile);
     }
