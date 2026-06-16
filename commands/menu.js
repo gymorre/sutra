@@ -61,7 +61,7 @@ Version : ${version}
 ├── 💱 *!Kurs*
 ├── 🏛️ *!Idx*
 ├── 🎥 *!Dv (Download Vidio)*
-├── 🖼️ *!S (Stiker Text)*
+├── 🖼️ *!Sticker (Stiker Text)*
 ├── 📞 *!Support*
 ├── 🔗 *!Invite*
 └── ⏳ *More Feature Coming Soon*

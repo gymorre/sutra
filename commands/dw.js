@@ -3,7 +3,7 @@ import { createCanvas } from "canvas";
 import fs from "fs";
 import path from "path";
 import { tmpdir } from "os";
-import { Jimp } from "jimp";
+import sharp from "sharp";
 
 export const name = "s";
 export const aliases = ["stiker", "sticker", "stext"];
@@ -108,12 +108,13 @@ async function generateTextSticker(text) {
 }
 
 /**
- * Convert PNG buffer ke buffer stiker menggunakan Jimp
+ * Convert PNG buffer ke buffer stiker menggunakan Sharp (WebP format)
  */
 async function pngToWebpSticker(pngBuffer) {
-  const image = await Jimp.read(pngBuffer);
-  image.resize({ w: 512, h: 512 });
-  return await image.getBuffer("image/png");
+  return await sharp(pngBuffer)
+    .resize(512, 512)
+    .webp()
+    .toBuffer();
 }
 
 export async function execute({ args, reply, sock, msg }) {
@@ -157,8 +158,8 @@ export async function execute({ args, reply, sock, msg }) {
       `${config.ui.line}\n┃ 🖼️ STIKER TEKS\n${config.ui.line}\n\n` +
         `❌ Gagal membuat stiker!\n` +
         `Error: ${err.message}\n\n` +
-        `Pastikan package *canvas* dan *jimp* sudah terinstall:\n` +
-        `npm install canvas jimp\n\n` +
+        `Pastikan package *canvas* dan *sharp* sudah terinstall:\n` +
+        `npm install canvas sharp\n\n` +
         `${config.ui.line}`
     );
   }
