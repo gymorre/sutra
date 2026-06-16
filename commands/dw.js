@@ -19,9 +19,9 @@ export const requiresRegistration = false;
  */
 async function generateTextSticker(text) {
   const SIZE = 512;            // ukuran stiker WA (512x512)
-  const PADDING = 40;          // padding kiri/kanan gaya Brat
+  const PADDING = 24;          // padding rapat gaya Brat
   const MAX_WIDTH = SIZE - PADDING * 2;
-  const LINE_HEIGHT_RATIO = 0.95; // Jarak baris ekstra rapat gaya Brat
+  const LINE_HEIGHT_RATIO = 0.95; // Jarak baris rapat gaya Brat
 
   const canvas = createCanvas(SIZE, SIZE);
   const ctx = canvas.getContext("2d");
@@ -30,10 +30,25 @@ async function generateTextSticker(text) {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, SIZE, SIZE);
 
-  // Konversi teks ke lowercase dan bersihkan whitespace
-  const cleanText = text.toLowerCase().trim();
+  // Bersihkan whitespace (tetap mempertahankan casing asli)
+  const cleanText = text.trim();
 
-  // Hitung ukuran font yang pas (dimulai dari besar khas Brat)
+  // Hitung jumlah kata untuk menentukan target jumlah baris
+  const wordsArray = cleanText.split(/\s+/);
+  const wordCount = wordsArray.length;
+  
+  let maxLinesTarget = 1;
+  if (wordCount > 1 && wordCount <= 3) {
+    maxLinesTarget = 2;
+  } else if (wordCount > 3 && wordCount <= 7) {
+    maxLinesTarget = 2; // Target 2 baris untuk 4-7 kata
+  } else if (wordCount > 7 && wordCount <= 12) {
+    maxLinesTarget = 3;
+  } else {
+    maxLinesTarget = 4;
+  }
+
+  // Hitung ukuran font yang pas
   let fontSize = 140;
   const minFontSize = 32;
 
@@ -63,14 +78,18 @@ async function generateTextSticker(text) {
     return lines;
   }
 
-  // Cari ukuran font yang muat di canvas
+  // Cari ukuran font yang muat dan sesuai dengan target baris
   let lines = [];
   while (fontSize >= minFontSize) {
     lines = wrapText(cleanText, fontSize);
     const lineHeight = fontSize * LINE_HEIGHT_RATIO;
     const totalHeight = lines.length * lineHeight;
-    if (totalHeight <= MAX_WIDTH) break;
-    fontSize -= 4;
+    
+    // Berhenti jika jumlah baris target terpenuhi dan muat di canvas
+    if (lines.length <= maxLinesTarget && totalHeight <= MAX_WIDTH) {
+      break;
+    }
+    fontSize -= 2;
   }
 
   const lineHeight = fontSize * LINE_HEIGHT_RATIO;
@@ -88,17 +107,16 @@ async function generateTextSticker(text) {
   
   lines.forEach((line, i) => {
     const y = startY + i * lineHeight;
-    const isLastLine = i === lines.length - 1;
     const words = line.split(" ");
 
     const scaledY = y / 1.18; // Sesuaikan koordinat Y setelah discaling
 
-    if (words.length === 1 || isLastLine) {
-      // Baris terakhir atau satu kata: rata kiri
+    if (words.length === 1) {
+      // Hanya satu kata: rata kiri
       ctx.fillStyle = "#000000";
       ctx.fillText(line, PADDING, scaledY);
     } else {
-      // Justify: ratakan kanan-kiri dengan menghitung spasi antar kata
+      // Justify: ratakan kanan-kiri dengan menghitung spasi antar kata (berlaku untuk semua baris)
       const totalWordWidth = words.reduce(
         (sum, w) => sum + ctx.measureText(w).width,
         0
@@ -127,8 +145,8 @@ async function generateTextSticker(text) {
 async function pngToWebpSticker(pngBuffer) {
   return await sharp(pngBuffer)
     .resize(512, 512)
-    .blur(0.9) // Memberikan efek blur halus agar menyerupai kualitas kompresi rendah (jelek) khas generator
-    .webp({ quality: 80 }) // Sedikit menurunkan kualitas untuk mendapatkan compression artifacts
+    .blur(0.8) // Efek blur halus agar menyerupai kualitas kompresi rendah khas generator
+    .webp({ quality: 85 })
     .toBuffer();
 }
 
