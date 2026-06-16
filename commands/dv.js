@@ -1,3 +1,4 @@
+cat > /root/sutra/commands/dv.js << 'ENDOFFILE'
 // commands/dv.js
 import { config } from "../config.js";
 import { execFile } from "child_process";
@@ -13,6 +14,7 @@ export const aliases = ["downloadvideo", "download"];
 export const requiresRegistration = false;
 
 const YTDLP_PATH = "/usr/local/bin/yt-dlp";
+const COOKIES_PATH = "/root/sutra/cookies.txt";
 
 function detectPlatform(url) {
   const u = url.toLowerCase();
@@ -25,20 +27,25 @@ function detectPlatform(url) {
 
 async function downloadWithYtDlp(url) {
   const tmpFile = path.join(tmpdir(), "sutra_dv_" + Date.now() + ".mp4");
+  const cookiesArgs = fs.existsSync(COOKIES_PATH) ? ["--cookies", COOKIES_PATH] : [];
+
   const args = [
     url, "-f", "best[ext=mp4][filesize<50M]/best", "-o", tmpFile,
     "--no-playlist", "--max-filesize", "50m", "--merge-output-format", "mp4",
     "--no-warnings", "--socket-timeout", "30",
+    ...cookiesArgs,
   ];
+
   try {
     await execFileAsync(YTDLP_PATH, args, { timeout: 120000 });
   } catch {
     await execFileAsync(
       YTDLP_PATH,
-      [url, "-o", tmpFile, "--no-playlist", "--merge-output-format", "mp4", "--no-warnings"],
+      [url, "-o", tmpFile, "--no-playlist", "--merge-output-format", "mp4", "--no-warnings", ...cookiesArgs],
       { timeout: 120000 }
     );
   }
+
   if (!fs.existsSync(tmpFile)) {
     const prefix = path.basename(tmpFile, ".mp4");
     const files = fs.readdirSync(tmpdir()).filter(f => f.startsWith(prefix));
@@ -55,7 +62,6 @@ const PLATFORM_LABEL = {
   facebook: "📘 Facebook",
 };
 
-// Spinner braille - terlihat halus saat di-edit berulang
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 function buildBox(title, lines) {
@@ -99,7 +105,6 @@ export async function execute({ args, reply, sock, msg }) {
   const platformLabel = PLATFORM_LABEL[platform];
   const jid = msg.key.remoteJid;
 
-  // Kirim pesan loading pertama, simpan key-nya supaya bisa di-edit terus
   const loadingMsg = await reply(
     buildBox("🎥 DOWNLOAD VIDEO", [
       `📌 Platform: ${platformLabel}`,
@@ -129,7 +134,6 @@ export async function execute({ args, reply, sock, msg }) {
     const sizeMB = stats.size / (1024 * 1024);
     const videoBuffer = fs.readFileSync(tmpFile);
 
-    // Edit pesan loading jadi "selesai" sebelum kirim video
     await sock.sendMessage(jid, {
       text: buildBox("🎥 DOWNLOAD VIDEO", [
         `📌 Platform: ${platformLabel}`,
@@ -165,3 +169,4 @@ export async function execute({ args, reply, sock, msg }) {
 }
 
 export default { name, aliases, requiresRegistration, execute };
+ENDOFFILE
