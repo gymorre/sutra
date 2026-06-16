@@ -29,6 +29,7 @@ import support from "../commands/support.js";
 import invitebot from "../commands/invitebot.js";
 import transfer from "../commands/transfer.js";
 import multiplayer from "../commands/multiplayer.js";
+import me from "../commands/me.js";
 import { isAdmin, handleGive, handleRemove } from "../commands/admin.js";
 
 // ============================
@@ -64,7 +65,7 @@ function registerGame(cmd) {
   menu, game, register,
   balance, cek, leaderboard,
   kurs, deposit, withdraw, idx, dv,
-  support, invitebot, transfer, multiplayer
+  support, invitebot, transfer, multiplayer, me
 ].forEach(registerCommand);
 
 // Daftarkan game commands

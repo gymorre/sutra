@@ -192,7 +192,7 @@ async function startBotGame({ sender, bet, reply, jid }) {
     `❌ ${senderUser?.nickname || "Kamu"}\n⭕ 🤖 BOT\n\n` +
     `💰 Bet: ${config.currencySymbol}${bet}\n\n` +
     `${renderBoard(board)}\n\n` +
-    `Giliranmu! Pilih: 1-9\nKeluar: !back\n\n${config.ui.line}`
+    `Giliranmu! Pilih: 1-9\n\n${config.ui.line}`
   );
 }
 
@@ -291,7 +291,7 @@ export async function handleInviteAccepted({ sock, msg, sender, reply, jid, send
     `⭕ @${toNum} (${toUser?.nickname || "P2"})\n\n` +
     `💰 Bet: ${config.currencySymbol}${bet} masing-masing\n\n` +
     `${renderBoard(board)}\n\n` +
-    `🎯 Giliran: ❌ @${fromNum}\n\nPilih posisi: 1-9\nKeluar: !back\n\n${config.ui.line}`,
+    `🎯 Giliran: ❌ @${fromNum}\n\nPilih posisi: 1-9\n\n${config.ui.line}`,
     [from, sender]
   );
 }
@@ -353,7 +353,7 @@ export async function handleGameCommand({ sender, args, reply, command, jid, sen
         `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n` +
         `${renderBoard(board)}\n\n` +
         `Giliran: ${turnSymbol} ${turnUser?.nickname || existing.turn}\n\n` +
-        `Pilih: 1-9\nKeluar: !back\n\n${config.ui.line}`
+        `Pilih: 1-9\n\n${config.ui.line}`
       );
     }
 
@@ -498,7 +498,7 @@ async function handleMove({ sender, pos, reply, jid, sendTo, existing: game }) {
 
   return reply(
     `${config.ui.line}\n┃ ❌⭕ TIC TAC TOE\n${config.ui.line}\n\n${renderBoard(board)}\n\n` +
-    `🎯 Giliran: ${nextSymbol} @${nextNum}\n\nPilih: 1-9\nKeluar: !back\n\n${config.ui.line}`,
+    `🎯 Giliran: ${nextSymbol} @${nextNum}\n\nPilih: 1-9\n\n${config.ui.line}`,
     mentionsList
   );
 }

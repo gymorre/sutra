@@ -24,22 +24,38 @@ export function isAdmin(sender) {
  * Resolve a player target to their JID
  * Accepts: @mention, phone number, nickname
  */
-function resolvePlayer(target, mentioned) {
+/**
+ * Resolve a player target to their JID
+ * Accepts: @mention, phone number, JID, nickname, quoted participant
+ */
+function resolvePlayer(target, mentioned, quoted) {
   // Check if there's a mentioned JID
   if (mentioned && mentioned.length > 0) {
     return mentioned[0];
   }
 
-  // Try as phone number (strip + and spaces)
-  let cleaned = target.replace(/[+\s\-]/g, "");
-  if (/^\d+$/.test(cleaned)) {
-    const jid = `${cleaned}@s.whatsapp.net`;
-    const user = getUser(jid);
-    if (user) return jid;
+  // Check if there's a quoted participant
+  if (quoted) {
+    return quoted;
+  }
+
+  if (!target) return null;
+
+  let cleaned = target.trim();
+
+  // If it's already a full JID (contains @)
+  if (cleaned.includes("@")) {
+    return cleaned;
+  }
+
+  // Try as phone number (strip +, spaces, -, @)
+  let phone = cleaned.replace(/[+\s\-@]/g, "");
+  if (/^\d+$/.test(phone)) {
+    return `${phone}@s.whatsapp.net`;
   }
 
   // Try as nickname
-  const byNickname = getUserByNickname(target);
+  const byNickname = getUserByNickname(cleaned);
   if (byNickname) return byNickname.jid;
 
   return null;
@@ -51,23 +67,42 @@ function resolvePlayer(target, mentioned) {
 export async function handleGive({ sender, args, reply, msg }) {
   if (!isAdmin(sender)) return;
 
-  if (args.length < 2) {
+  const quoted = msg?.message?.extendedTextMessage?.contextInfo?.participant;
+  const mentioned = msg?.message?.extendedTextMessage?.contextInfo?.mentionedJid;
+
+  let targetArg = null;
+  let amountArg = null;
+
+  if (quoted && args.length === 1) {
+    amountArg = args[0];
+  } else if (args.length >= 2) {
+    amountArg = args[args.length - 1];
+    targetArg = args.slice(0, -1).join(" ");
+  }
+
+  if (!amountArg) {
     return reply(
       `${config.ui.line}\n┃ 🔧 ADMIN\n${config.ui.line}\n\n` +
-      `Format: !give <player> <jumlah>\n\nContoh:\n!give @player 5000\n!give 6281234567890 5000\n!give nickname 5000\n\n${config.ui.line}`
+      `Format salah!\n\n` +
+      `Gunakan:\n` +
+      `• !give <id/phone/nickname/@tag> <jumlah>\n` +
+      `• Balas pesan target dan ketik !give <jumlah>\n\n` +
+      `Contoh:\n` +
+      `!give 6285158220582 5000\n` +
+      `!give @Adit 5000\n` +
+      `!give AditGaming 5000\n\n` +
+      `${config.ui.line}`
     );
   }
 
-  const amount = parseInt(args[args.length - 1], 10);
+  const amount = parseInt(amountArg, 10);
   if (isNaN(amount) || amount <= 0) {
     return reply(
       `${config.ui.line}\n┃ 🔧 ADMIN\n${config.ui.line}\n\n❌ Jumlah harus angka positif!\n\n${config.ui.line}`
     );
   }
 
-  const targetArg = args.slice(0, -1).join(" ").replace(/@/g, "");
-  const mentioned = msg?.message?.extendedTextMessage?.contextInfo?.mentionedJid;
-  const playerJid = resolvePlayer(targetArg, mentioned);
+  const playerJid = resolvePlayer(targetArg, mentioned, quoted);
 
   if (!playerJid) {
     return reply(
@@ -100,23 +135,42 @@ export async function handleGive({ sender, args, reply, msg }) {
 export async function handleRemove({ sender, args, reply, msg }) {
   if (!isAdmin(sender)) return;
 
-  if (args.length < 2) {
+  const quoted = msg?.message?.extendedTextMessage?.contextInfo?.participant;
+  const mentioned = msg?.message?.extendedTextMessage?.contextInfo?.mentionedJid;
+
+  let targetArg = null;
+  let amountArg = null;
+
+  if (quoted && args.length === 1) {
+    amountArg = args[0];
+  } else if (args.length >= 2) {
+    amountArg = args[args.length - 1];
+    targetArg = args.slice(0, -1).join(" ");
+  }
+
+  if (!amountArg) {
     return reply(
       `${config.ui.line}\n┃ 🔧 ADMIN\n${config.ui.line}\n\n` +
-      `Format: !remove <player> <jumlah>\n\nContoh:\n!remove @player 5000\n!remove 6281234567890 5000\n!remove nickname 5000\n\n${config.ui.line}`
+      `Format salah!\n\n` +
+      `Gunakan:\n` +
+      `• !remove <id/phone/nickname/@tag> <jumlah>\n` +
+      `• Balas pesan target dan ketik !remove <jumlah>\n\n` +
+      `Contoh:\n` +
+      `!remove 6285158220582 5000\n` +
+      `!remove @Adit 5000\n` +
+      `!remove AditGaming 5000\n\n` +
+      `${config.ui.line}`
     );
   }
 
-  const amount = parseInt(args[args.length - 1], 10);
+  const amount = parseInt(amountArg, 10);
   if (isNaN(amount) || amount <= 0) {
     return reply(
       `${config.ui.line}\n┃ 🔧 ADMIN\n${config.ui.line}\n\n❌ Jumlah harus angka positif!\n\n${config.ui.line}`
     );
   }
 
-  const targetArg = args.slice(0, -1).join(" ").replace(/@/g, "");
-  const mentioned = msg?.message?.extendedTextMessage?.contextInfo?.mentionedJid;
-  const playerJid = resolvePlayer(targetArg, mentioned);
+  const playerJid = resolvePlayer(targetArg, mentioned, quoted);
 
   if (!playerJid) {
     return reply(
