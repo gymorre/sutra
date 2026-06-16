@@ -21,27 +21,31 @@ async function generateTextSticker(text) {
   const SIZE = 512;            // ukuran stiker WA (512x512)
   const PADDING = 32;          // padding kiri/kanan
   const MAX_WIDTH = SIZE - PADDING * 2;
-  const LINE_HEIGHT_RATIO = 1.15;
+  const LINE_HEIGHT_RATIO = 1.05; // Gaya Brat memiliki jarak baris yang sangat rapat
 
   const canvas = createCanvas(SIZE, SIZE);
   const ctx = canvas.getContext("2d");
 
-  // Background putih
-  ctx.fillStyle = "#ffffff";
+  // Background hijau Brat (#8ace00)
+  ctx.fillStyle = "#8ace00";
   ctx.fillRect(0, 0, SIZE, SIZE);
+
+  // Konversi teks ke lowercase dan bersihkan whitespace
+  const cleanText = text.toLowerCase().trim();
 
   // Hitung ukuran font yang pas
   let fontSize = 96;
   const minFontSize = 32;
 
-  ctx.fillStyle = "#111111";
+  ctx.fillStyle = "#000000";
   ctx.textBaseline = "top";
+  ctx.textAlign = "center";
 
   /**
    * Bagi teks menjadi baris-baris yang pas dengan MAX_WIDTH
    */
   function wrapText(txt, fSize) {
-    ctx.font = `500 ${fSize}px Arial`;
+    ctx.font = `${fSize}px Arial`;
     const words = txt.split(" ");
     const lines = [];
     let current = "";
@@ -62,10 +66,10 @@ async function generateTextSticker(text) {
   // Cari ukuran font yang muat di canvas
   let lines = [];
   while (fontSize >= minFontSize) {
-    lines = wrapText(text, fontSize);
+    lines = wrapText(cleanText, fontSize);
     const lineHeight = fontSize * LINE_HEIGHT_RATIO;
     const totalHeight = lines.length * lineHeight;
-    if (totalHeight <= MAX_WIDTH) break; // MAX_WIDTH dipakai juga sbg max height
+    if (totalHeight <= MAX_WIDTH) break;
     fontSize -= 4;
   }
 
@@ -73,34 +77,15 @@ async function generateTextSticker(text) {
   const totalTextHeight = lines.length * lineHeight;
   const startY = (SIZE - totalTextHeight) / 2;
 
-  ctx.font = `500 ${fontSize}px Arial`;
+  ctx.font = `${fontSize}px Arial`;
+  ctx.fillStyle = "#000000";
+  ctx.textBaseline = "top";
+  ctx.textAlign = "center";
 
-  // Gambar setiap baris dengan justify
+  // Gambar setiap baris secara terpusat (Centered)
   lines.forEach((line, i) => {
     const y = startY + i * lineHeight;
-    const isLastLine = i === lines.length - 1;
-    const words = line.split(" ");
-
-    if (words.length === 1 || isLastLine) {
-      // Baris terakhir atau satu kata: rata kiri
-      ctx.fillStyle = "#111111";
-      ctx.fillText(line, PADDING, y);
-    } else {
-      // Justify: hitung spasi antar kata
-      const totalWordWidth = words.reduce(
-        (sum, w) => sum + ctx.measureText(w).width,
-        0
-      );
-      const totalSpace = MAX_WIDTH - totalWordWidth;
-      const spacePerGap = totalSpace / (words.length - 1);
-
-      let x = PADDING;
-      words.forEach((word, wi) => {
-        ctx.fillStyle = "#111111";
-        ctx.fillText(word, x, y);
-        x += ctx.measureText(word).width + spacePerGap;
-      });
-    }
+    ctx.fillText(line, SIZE / 2, y);
   });
 
   // Export ke buffer PNG
