@@ -19,9 +19,9 @@ export const requiresRegistration = false;
  */
 async function generateTextSticker(text) {
   const SIZE = 512;            // ukuran stiker WA (512x512)
-  const PADDING = 32;          // padding kiri/kanan
+  const PADDING = 40;          // padding kiri/kanan gaya Brat
   const MAX_WIDTH = SIZE - PADDING * 2;
-  const LINE_HEIGHT_RATIO = 1.05; // Jarak baris rapat gaya Brat
+  const LINE_HEIGHT_RATIO = 0.95; // Jarak baris ekstra rapat gaya Brat
 
   const canvas = createCanvas(SIZE, SIZE);
   const ctx = canvas.getContext("2d");
@@ -33,8 +33,8 @@ async function generateTextSticker(text) {
   // Konversi teks ke lowercase dan bersihkan whitespace
   const cleanText = text.toLowerCase().trim();
 
-  // Hitung ukuran font yang pas
-  let fontSize = 96;
+  // Hitung ukuran font yang pas (dimulai dari besar khas Brat)
+  let fontSize = 140;
   const minFontSize = 32;
 
   ctx.fillStyle = "#000000";
@@ -82,16 +82,21 @@ async function generateTextSticker(text) {
   ctx.textBaseline = "top";
   ctx.textAlign = "left";
 
-  // Gambar setiap baris dengan layout justify (khas Brat)
+  // Gambar setiap baris dengan layout justify (khas Brat) dan regangan vertikal
+  ctx.save();
+  ctx.scale(1, 1.18); // Meregangkan font secara vertikal sebesar 18%
+  
   lines.forEach((line, i) => {
     const y = startY + i * lineHeight;
     const isLastLine = i === lines.length - 1;
     const words = line.split(" ");
 
+    const scaledY = y / 1.18; // Sesuaikan koordinat Y setelah discaling
+
     if (words.length === 1 || isLastLine) {
       // Baris terakhir atau satu kata: rata kiri
       ctx.fillStyle = "#000000";
-      ctx.fillText(line, PADDING, y);
+      ctx.fillText(line, PADDING, scaledY);
     } else {
       // Justify: ratakan kanan-kiri dengan menghitung spasi antar kata
       const totalWordWidth = words.reduce(
@@ -104,23 +109,26 @@ async function generateTextSticker(text) {
       let x = PADDING;
       words.forEach((word, wi) => {
         ctx.fillStyle = "#000000";
-        ctx.fillText(word, x, y);
+        ctx.fillText(word, x, scaledY);
         x += ctx.measureText(word).width + spacePerGap;
       });
     }
   });
+
+  ctx.restore();
 
   // Export ke buffer PNG
   return canvas.toBuffer("image/png");
 }
 
 /**
- * Convert PNG buffer ke buffer stiker menggunakan Sharp (WebP format)
+ * Convert PNG buffer ke buffer stiker menggunakan Sharp (WebP format) dengan efek low-res
  */
 async function pngToWebpSticker(pngBuffer) {
   return await sharp(pngBuffer)
     .resize(512, 512)
-    .webp()
+    .blur(0.9) // Memberikan efek blur halus agar menyerupai kualitas kompresi rendah (jelek) khas generator
+    .webp({ quality: 80 }) // Sedikit menurunkan kualitas untuk mendapatkan compression artifacts
     .toBuffer();
 }
 
