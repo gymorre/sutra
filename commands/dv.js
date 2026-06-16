@@ -12,6 +12,9 @@ export const name = "dv";
 export const aliases = ["downloadvideo", "download"];
 export const requiresRegistration = false;
 
+// Path yt-dlp yang sudah terkonfirmasi
+const YTDLP_PATH = "C:\\Users\\evilc\\AppData\\Roaming\\Python\\Python311\\Scripts\\yt-dlp.exe";
+
 function detectPlatform(url) {
   if (/tiktok\.com/i.test(url)) return "tiktok";
   if (/instagram\.com|instagr\.am/i.test(url)) return "instagram";
@@ -31,16 +34,13 @@ async function downloadWithYtDlp(url) {
     "--max-filesize", "50m",
     "--merge-output-format", "mp4",
     "--no-warnings",
-    // TikTok tanpa watermark
-    "--extractor-args", "tiktok:api_hostname=api22-normal-c-useast2a.tiktokv.com",
-    // Timeout
     "--socket-timeout", "30",
   ];
 
   try {
-    await execFileAsync("yt-dlp", args, { timeout: 120000 });
-  } catch (err) {
-    // Coba fallback tanpa filter format
+    await execFileAsync(YTDLP_PATH, args, { timeout: 120000 });
+  } catch {
+    // Fallback tanpa filter format
     const fallbackArgs = [
       url,
       "-o", tmpFile,
@@ -49,15 +49,14 @@ async function downloadWithYtDlp(url) {
       "--no-warnings",
       "--socket-timeout", "30",
     ];
-    await execFileAsync("yt-dlp", fallbackArgs, { timeout: 120000 });
+    await execFileAsync(YTDLP_PATH, fallbackArgs, { timeout: 120000 });
   }
 
+  // yt-dlp kadang tambah ekstensi sendiri, cari file dengan prefix yang sama
   if (!fs.existsSync(tmpFile)) {
-    // yt-dlp kadang tambahkan ekstensi sendiri, cari file dengan nama mirip
-    const dir = tmpdir();
     const prefix = path.basename(tmpFile, ".mp4");
-    const files = fs.readdirSync(dir).filter(f => f.startsWith(prefix));
-    if (files.length > 0) return path.join(dir, files[0]);
+    const files = fs.readdirSync(tmpdir()).filter(f => f.startsWith(prefix));
+    if (files.length > 0) return path.join(tmpdir(), files[0]);
     throw new Error("File hasil download tidak ditemukan");
   }
 
@@ -84,7 +83,8 @@ export async function execute({ args, reply, sock, msg }) {
   if (!/^https?:\/\//i.test(url)) {
     return reply(
       `${config.ui.line}\n┃ 🎥 DOWNLOAD VIDEO\n${config.ui.line}\n\n` +
-        `❌ URL tidak valid!\n\n${config.ui.line}`
+        `❌ URL tidak valid! Pastikan link dimulai dengan https://\n\n` +
+        `${config.ui.line}`
     );
   }
 
@@ -118,9 +118,9 @@ export async function execute({ args, reply, sock, msg }) {
   try {
     tmpFile = await downloadWithYtDlp(url);
 
-    // Cek ukuran file
     const stats = fs.statSync(tmpFile);
     const sizeMB = stats.size / (1024 * 1024);
+
     if (sizeMB > 100) {
       throw new Error(`File terlalu besar (${sizeMB.toFixed(1)}MB, maks 100MB)`);
     }
