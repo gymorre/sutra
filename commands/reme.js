@@ -1,9 +1,3 @@
-// commands/reme.js
-// Game Reme - angka acak 0-36, pemenang ditentukan dari digit sum
-// Aturan: angka dijumlahkan digitnya (22 → 2+2=4), tertinggi menang
-// Auto-win: angka 0, 19, 28 (digit sum 10 atau 0) → x3 payout
-// Tie vs bot → bot menang. Tie multiplayer → rematch otomatis.
-
 import { subtractBalance, recordGameResult, addBalance, getUser, getUserByNickname } from "../utils/economy.js";
 import { randomInt } from "../utils/random.js";
 import { animateMessage, remeRollingFrames, sleep } from "../utils/animation.js";
@@ -20,26 +14,15 @@ export const isGasGame = false;
 // HELPERS: DIGIT SUM & AUTO-WIN
 // ============================
 
-/**
- * Hitung digit sum dari angka.
- * Contoh: 22 → 2+2 = 4, 36 → 3+6 = 9, 5 → 5, 0 → 0
- */
 function digitSum(n) {
   if (n === 0) return 0;
   return String(n).split("").reduce((sum, d) => sum + parseInt(d, 10), 0);
 }
 
-/**
- * Cek apakah angka adalah auto-win (angka 0, 19, 28).
- * Digit sum: 0→0, 19→10, 28→10. Semua dianggap spesial.
- */
 function isAutoWin(n) {
   return n === 0 || n === 19 || n === 28;
 }
 
-/**
- * Format tampilan angka + digit sum
- */
 function formatNumber(n) {
   const ds = digitSum(n);
   if (isAutoWin(n)) {
@@ -355,44 +338,31 @@ async function playSingleplayer({ sender, bet, reply }) {
     );
   }
 
-  const playerNumber = randomInt(0, 36);
-  const botNumber = randomInt(0, 36);
+  let playerNumber, botNumber, playerScore, botScore;
+  let playerAutoWin, botAutoWin;
 
-  const playerAutoWin = isAutoWin(playerNumber);
-  const botAutoWin = isAutoWin(botNumber);
+  // Re-roll jika seri agar probabilitas kemenangan vs Bot seimbang 50/50 secara adil
+  do {
+    playerNumber = randomInt(0, 36);
+    botNumber = randomInt(0, 36);
+    playerAutoWin = isAutoWin(playerNumber);
+    botAutoWin = isAutoWin(botNumber);
+    playerScore = playerAutoWin ? 99 : digitSum(playerNumber);
+    botScore = botAutoWin ? 99 : digitSum(botNumber);
+  } while (playerScore === botScore);
 
-  let won = false;
+  let won = playerScore > botScore;
   let payout = 0;
   let specialMsg = "";
 
-  if (playerAutoWin && botAutoWin) {
-    // Both auto-win → bot (admin) wins
-    won = false;
-    specialMsg = "\n\n🤖 Bot juga mendapat angka spesial!\nDealer menang!";
-  } else if (botAutoWin) {
-    // Bot auto-win → bot wins
-    won = false;
-    specialMsg = "\n\n🤖 Bot mendapat angka spesial! Dealer menang!";
-  } else if (playerAutoWin) {
-    // Player auto-win → x3 payout
-    won = true;
+  if (playerAutoWin) {
     payout = bet * 3;
     specialMsg = "\n\n⭐ AUTO WIN x3! ⭐";
-  } else {
-    // Normal comparison by digit sum
-    const playerScore = digitSum(playerNumber);
-    const botScore = digitSum(botNumber);
-
-    if (playerScore > botScore) {
-      won = true;
-      payout = bet * 2;
-    } else if (playerScore === botScore) {
-      // Tie → bot (admin/dealer) wins
-      won = false;
-      specialMsg = "\n\n🤝 Angka sama! Dealer menang!";
-    } else {
-      won = false;
-    }
+  } else if (botAutoWin) {
+    won = false;
+    specialMsg = "\n\n🤖 Bot mendapat angka spesial! Dealer menang!";
+  } else if (won) {
+    payout = bet * 2;
   }
 
   await reply(

@@ -25,7 +25,6 @@ function resolvePlayer(target, mentioned, quoted) {
     return cleaned;
   }
 
-  // Jika diawali dengan '@' (misal: @pookie), hilangkan karakter '@'
   if (cleaned.startsWith("@")) {
     cleaned = cleaned.substring(1);
   }

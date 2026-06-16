@@ -34,11 +34,11 @@ import me from "../commands/me.js";
 import give from "../commands/give.js";
 import remove from "../commands/remove.js";
 
-const ADMIN_NUMBER = "6285158220582";
+const ADMIN_NUMBERS = new Set(["6285158220582", "6281399395985", "170115232485392"]);
 
 export function isAdmin(sender) {
   const senderNum = sender.split("@")[0].split(":")[0];
-  return senderNum === ADMIN_NUMBER;
+  return ADMIN_NUMBERS.has(senderNum);
 }
 
 // ============================
