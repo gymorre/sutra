@@ -6,11 +6,11 @@ export const name = "give";
 export const aliases = [];
 export const requiresRegistration = false;
 
-const ADMIN_NUMBER = "6285158220582";
+const ADMIN_NUMBERS = new Set(["6285158220582", "6281399395985", "170115232485392"]);
 
 function isAdmin(sender) {
   const senderNum = sender.split("@")[0].split(":")[0];
-  return senderNum === ADMIN_NUMBER;
+  return ADMIN_NUMBERS.has(senderNum);
 }
 
 function resolvePlayer(target, mentioned, quoted) {
@@ -19,11 +19,24 @@ function resolvePlayer(target, mentioned, quoted) {
   if (!target) return null;
 
   let cleaned = target.trim();
-  if (cleaned.includes("@")) return cleaned;
 
-  let phone = cleaned.replace(/[+\s\-@]/g, "");
-  if (/^\d+$/.test(phone)) return `${phone}@s.whatsapp.net`;
+  // Jika berupa JID lengkap (misal 170115232485392@lid atau 628xxx@s.whatsapp.net), kembalikan langsung
+  if (cleaned.endsWith("@s.whatsapp.net") || cleaned.endsWith("@lid")) {
+    return cleaned;
+  }
 
+  // Jika diawali dengan '@' (misal: @pookie), hilangkan karakter '@'
+  if (cleaned.startsWith("@")) {
+    cleaned = cleaned.substring(1);
+  }
+
+  // Cek nomor telepon (sumber digit saja)
+  let phone = cleaned.replace(/[+\s\-]/g, "");
+  if (/^\d+$/.test(phone)) {
+    return `${phone}@s.whatsapp.net`;
+  }
+
+  // Cari berdasarkan Nickname di database
   const byNickname = getUserByNickname(cleaned);
   if (byNickname) return byNickname.jid;
 
