@@ -1,22 +1,17 @@
 // commands/dv.js
-// Download video dari TikTok, Instagram, YouTube, Facebook
-// Usage: !dv <link>
-
 import { config } from "../config.js";
-import fetch from "node-fetch";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import fs from "fs";
 import path from "path";
-import { pipeline } from "stream/promises";
-import { createWriteStream } from "fs";
 import { tmpdir } from "os";
+
+const execFileAsync = promisify(execFile);
 
 export const name = "dv";
 export const aliases = ["downloadvideo", "download"];
 export const requiresRegistration = false;
 
-/**
- * Deteksi platform dari URL
- */
 function detectPlatform(url) {
   if (/tiktok\.com/i.test(url)) return "tiktok";
   if (/instagram\.com|instagr\.am/i.test(url)) return "instagram";
@@ -25,69 +20,47 @@ function detectPlatform(url) {
   return null;
 }
 
-/**
- * Download video menggunakan API cobalt.tools (versi baru)
- * Docs: https://github.com/imputnet/cobalt
- */
-async function fetchVideoUrl(url) {
-  // ✅ Endpoint baru cobalt API
-  const apiUrl = "https://api.cobalt.tools";
-
-  const response = await fetch(apiUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({
-      url: url,
-      videoQuality: "720",       // ✅ Nama field baru (bukan vQuality)
-      filenameStyle: "basic",    // ✅ Nama field baru (bukan filenamePattern)
-      twitterGif: false,
-      tiktokH265: false,
-    }),
-  });
-
-  if (!response.ok) {
-    const errText = await response.text().catch(() => "");
-    throw new Error(`API error: ${response.status} ${errText}`);
-  }
-
-  const data = await response.json();
-
-  if (data.status === "error") {
-    throw new Error(data.error?.code || data.text || "Gagal mengambil video");
-  }
-
-  if (data.status === "picker") {
-    if (data.picker && data.picker.length > 0) {
-      return data.picker[0].url;
-    }
-    throw new Error("Tidak ada video yang bisa diunduh");
-  }
-
-  if (data.status === "tunnel" || data.status === "redirect") {
-    return data.url;
-  }
-
-  throw new Error(`Respon tidak dikenali: ${data.status}`);
-}
-
-/**
- * Download file dari URL ke file sementara
- */
-async function downloadToTemp(url) {
+async function downloadWithYtDlp(url) {
   const tmpFile = path.join(tmpdir(), `sutra_dv_${Date.now()}.mp4`);
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-    },
-  });
 
-  if (!res.ok) throw new Error(`Gagal download file: ${res.status}`);
+  const args = [
+    url,
+    "-f", "best[ext=mp4][filesize<50M]/best[filesize<50M]/best",
+    "-o", tmpFile,
+    "--no-playlist",
+    "--max-filesize", "50m",
+    "--merge-output-format", "mp4",
+    "--no-warnings",
+    // TikTok tanpa watermark
+    "--extractor-args", "tiktok:api_hostname=api22-normal-c-useast2a.tiktokv.com",
+    // Timeout
+    "--socket-timeout", "30",
+  ];
 
-  await pipeline(res.body, createWriteStream(tmpFile));
+  try {
+    await execFileAsync("yt-dlp", args, { timeout: 120000 });
+  } catch (err) {
+    // Coba fallback tanpa filter format
+    const fallbackArgs = [
+      url,
+      "-o", tmpFile,
+      "--no-playlist",
+      "--merge-output-format", "mp4",
+      "--no-warnings",
+      "--socket-timeout", "30",
+    ];
+    await execFileAsync("yt-dlp", fallbackArgs, { timeout: 120000 });
+  }
+
+  if (!fs.existsSync(tmpFile)) {
+    // yt-dlp kadang tambahkan ekstensi sendiri, cari file dengan nama mirip
+    const dir = tmpdir();
+    const prefix = path.basename(tmpFile, ".mp4");
+    const files = fs.readdirSync(dir).filter(f => f.startsWith(prefix));
+    if (files.length > 0) return path.join(dir, files[0]);
+    throw new Error("File hasil download tidak ditemukan");
+  }
+
   return tmpFile;
 }
 
@@ -98,15 +71,12 @@ export async function execute({ args, reply, sock, msg }) {
     return reply(
       `${config.ui.line}\n┃ 🎥 DOWNLOAD VIDEO\n${config.ui.line}\n\n` +
         `❌ Masukkan link video!\n\n` +
-        `Gunakan:\n` +
-        `• *!dv <link>*\n\n` +
+        `Gunakan: *!dv <link>*\n\n` +
         `Platform yang didukung:\n` +
         `• 🎵 TikTok\n` +
         `• 📸 Instagram (Reels/Post)\n` +
-        `• ▶️ YouTube (max 10 menit)\n` +
+        `• ▶️ YouTube (max 50MB)\n` +
         `• 📘 Facebook\n\n` +
-        `Contoh:\n` +
-        `!dv https://www.tiktok.com/@user/video/xxx\n\n` +
         `${config.ui.line}`
     );
   }
@@ -114,8 +84,7 @@ export async function execute({ args, reply, sock, msg }) {
   if (!/^https?:\/\//i.test(url)) {
     return reply(
       `${config.ui.line}\n┃ 🎥 DOWNLOAD VIDEO\n${config.ui.line}\n\n` +
-        `❌ URL tidak valid! Pastikan link dimulai dengan https://\n\n` +
-        `${config.ui.line}`
+        `❌ URL tidak valid!\n\n${config.ui.line}`
     );
   }
 
@@ -124,11 +93,7 @@ export async function execute({ args, reply, sock, msg }) {
     return reply(
       `${config.ui.line}\n┃ 🎥 DOWNLOAD VIDEO\n${config.ui.line}\n\n` +
         `❌ Platform tidak didukung!\n\n` +
-        `Platform yang didukung:\n` +
-        `• 🎵 TikTok\n` +
-        `• 📸 Instagram\n` +
-        `• ▶️ YouTube\n` +
-        `• 📘 Facebook\n\n` +
+        `• 🎵 TikTok\n• 📸 Instagram\n• ▶️ YouTube\n• 📘 Facebook\n\n` +
         `${config.ui.line}`
     );
   }
@@ -142,7 +107,7 @@ export async function execute({ args, reply, sock, msg }) {
 
   await reply(
     `${config.ui.line}\n┃ 🎥 DOWNLOAD VIDEO\n${config.ui.line}\n\n` +
-      `⏳ Sedang memproses...\n` +
+      `⏳ Sedang mengunduh...\n` +
       `📌 Platform: ${platformLabel}\n\n` +
       `Mohon tunggu sebentar 🙏\n\n` +
       `${config.ui.line}`
@@ -151,17 +116,25 @@ export async function execute({ args, reply, sock, msg }) {
   let tmpFile = null;
 
   try {
-    const videoUrl = await fetchVideoUrl(url);
-    tmpFile = await downloadToTemp(videoUrl);
-    const videoBuffer = fs.readFileSync(tmpFile);
+    tmpFile = await downloadWithYtDlp(url);
 
+    // Cek ukuran file
+    const stats = fs.statSync(tmpFile);
+    const sizeMB = stats.size / (1024 * 1024);
+    if (sizeMB > 100) {
+      throw new Error(`File terlalu besar (${sizeMB.toFixed(1)}MB, maks 100MB)`);
+    }
+
+    const videoBuffer = fs.readFileSync(tmpFile);
     const jid = msg.key.remoteJid;
+
     await sock.sendMessage(jid, {
       video: videoBuffer,
       caption:
         `${config.ui.line}\n┃ 🎥 DOWNLOAD VIDEO\n${config.ui.line}\n\n` +
         `✅ Berhasil diunduh!\n` +
-        `📌 Platform: ${platformLabel}\n\n` +
+        `📌 Platform: ${platformLabel}\n` +
+        `📦 Ukuran: ${sizeMB.toFixed(1)} MB\n\n` +
         `_©2026 Sutra Bot_\n` +
         `${config.ui.line}`,
       mimetype: "video/mp4",
@@ -174,8 +147,8 @@ export async function execute({ args, reply, sock, msg }) {
         `Kemungkinan penyebab:\n` +
         `• Link sudah kedaluwarsa atau dihapus\n` +
         `• Akun/konten bersifat privat\n` +
-        `• Video terlalu panjang (YouTube max ~10 menit)\n` +
-        `• Server sedang sibuk, coba lagi\n\n` +
+        `• Video terlalu besar (maks 50MB)\n` +
+        `• Platform memblokir download\n\n` +
         `Error: ${err.message}\n\n` +
         `${config.ui.line}`
     );
