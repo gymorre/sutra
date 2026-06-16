@@ -6,8 +6,8 @@
 import { addBalance, subtractBalance, getUser, getUserByNickname } from "../utils/economy.js";
 import { config } from "../config.js";
 
-// Admin JID - only this number can use admin commands
-const ADMIN_JID = "6285158220582@s.whatsapp.net";
+// Admin number (without country code prefix, no @domain, no device suffix)
+const ADMIN_NUMBER = "6285158220582";
 
 export const name = "admin";
 export const aliases = [];
@@ -15,15 +15,17 @@ export const requiresRegistration = false;
 
 /**
  * Check if sender is the authorized admin
+ * Handles all JID formats:
+ * - 6285158220582@s.whatsapp.net
+ * - 6285158220582:0@s.whatsapp.net (multi-device)
+ * - 6285158220582:XX@s.whatsapp.net
  */
 export function isAdmin(sender) {
-  return sender === ADMIN_JID;
+  const senderNum = sender.split("@")[0].split(":")[0];
+  console.log("[ADMIN] Sender number:", senderNum); // debug log
+  return senderNum === ADMIN_NUMBER;
 }
 
-/**
- * Resolve a player target to their JID
- * Accepts: @mention, phone number, nickname
- */
 /**
  * Resolve a player target to their JID
  * Accepts: @mention, phone number, JID, nickname, quoted participant

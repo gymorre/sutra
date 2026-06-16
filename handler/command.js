@@ -25,6 +25,7 @@ import deposit from "../commands/deposit.js";
 import withdraw from "../commands/withdraw.js";
 import idx from "../commands/idx.js";
 import dv from "../commands/dv.js";
+import dw from "../commands/dw.js";
 import support from "../commands/support.js";
 import invitebot from "../commands/invitebot.js";
 import transfer from "../commands/transfer.js";
@@ -64,7 +65,7 @@ function registerGame(cmd) {
 [
   menu, game, register,
   balance, cek, leaderboard,
-  kurs, deposit, withdraw, idx, dv,
+  kurs, deposit, withdraw, idx, dv, dw,
   support, invitebot, transfer, multiplayer, me
 ].forEach(registerCommand);
 

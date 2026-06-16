@@ -60,7 +60,8 @@ Version : ${version}
 ├── 💵 *!Withdraw*
 ├── 💱 *!Kurs*
 ├── 🏛️ *!Idx*
-├── 🎥 *!Dv*
+├── 🎥 *!Dv (Download Vidio)*
+├── 🖼️ *!S (Stiker Text)*
 ├── 📞 *!Support*
 ├── 🔗 *!Invite*
 └── ⏳ *More Feature Coming Soon*
