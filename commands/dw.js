@@ -21,13 +21,13 @@ async function generateTextSticker(text) {
   const SIZE = 512;            // ukuran stiker WA (512x512)
   const PADDING = 32;          // padding kiri/kanan
   const MAX_WIDTH = SIZE - PADDING * 2;
-  const LINE_HEIGHT_RATIO = 1.05; // Gaya Brat memiliki jarak baris yang sangat rapat
+  const LINE_HEIGHT_RATIO = 1.05; // Jarak baris rapat gaya Brat
 
   const canvas = createCanvas(SIZE, SIZE);
   const ctx = canvas.getContext("2d");
 
-  // Background hijau Brat (#8ace00)
-  ctx.fillStyle = "#8ace00";
+  // Background putih
+  ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, SIZE, SIZE);
 
   // Konversi teks ke lowercase dan bersihkan whitespace
@@ -39,13 +39,13 @@ async function generateTextSticker(text) {
 
   ctx.fillStyle = "#000000";
   ctx.textBaseline = "top";
-  ctx.textAlign = "center";
+  ctx.textAlign = "left";
 
   /**
    * Bagi teks menjadi baris-baris yang pas dengan MAX_WIDTH
    */
   function wrapText(txt, fSize) {
-    ctx.font = `${fSize}px Arial`;
+    ctx.font = `500 ${fSize}px Arial`;
     const words = txt.split(" ");
     const lines = [];
     let current = "";
@@ -77,15 +77,37 @@ async function generateTextSticker(text) {
   const totalTextHeight = lines.length * lineHeight;
   const startY = (SIZE - totalTextHeight) / 2;
 
-  ctx.font = `${fontSize}px Arial`;
+  ctx.font = `500 ${fontSize}px Arial`;
   ctx.fillStyle = "#000000";
   ctx.textBaseline = "top";
-  ctx.textAlign = "center";
+  ctx.textAlign = "left";
 
-  // Gambar setiap baris secara terpusat (Centered)
+  // Gambar setiap baris dengan layout justify (khas Brat)
   lines.forEach((line, i) => {
     const y = startY + i * lineHeight;
-    ctx.fillText(line, SIZE / 2, y);
+    const isLastLine = i === lines.length - 1;
+    const words = line.split(" ");
+
+    if (words.length === 1 || isLastLine) {
+      // Baris terakhir atau satu kata: rata kiri
+      ctx.fillStyle = "#000000";
+      ctx.fillText(line, PADDING, y);
+    } else {
+      // Justify: ratakan kanan-kiri dengan menghitung spasi antar kata
+      const totalWordWidth = words.reduce(
+        (sum, w) => sum + ctx.measureText(w).width,
+        0
+      );
+      const totalSpace = MAX_WIDTH - totalWordWidth;
+      const spacePerGap = totalSpace / (words.length - 1);
+
+      let x = PADDING;
+      words.forEach((word, wi) => {
+        ctx.fillStyle = "#000000";
+        ctx.fillText(word, x, y);
+        x += ctx.measureText(word).width + spacePerGap;
+      });
+    }
   });
 
   // Export ke buffer PNG
